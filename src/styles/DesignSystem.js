@@ -1,4 +1,5 @@
 import { StyleSheet } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // ===== ELEGANT COLOR PALETTE =====
 export const Colors = {
@@ -59,6 +60,7 @@ export const Colors = {
   }
 };
 
+
 // ===== TYPOGRAPHY (FIXED SIZES) =====
 export const Typography = {
   // Fixed Font Sizes (no scaling)
@@ -113,6 +115,7 @@ export const BorderRadius = {
 
 // ===== SHADOWS =====
 export const Shadows = {
+  none: {},
   sm: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -339,6 +342,8 @@ export const Layout = {
   tabBarHeight: 80,
 };
 
+
+// Default export
 export default {
   Colors,
   Typography,

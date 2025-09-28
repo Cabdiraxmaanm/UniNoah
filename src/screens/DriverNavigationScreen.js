@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, StatusBar, Animated, Dimensions, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Marker, Polyline } from '../components/MapView';
-import { locationAPI } from '../services/api';
+import MonthlyTrackingCalendar from '../components/MonthlyTrackingCalendar';
+import { locationAPI, bookingsAPI } from '../services/api';
 import { useApp } from '../utils/AppContext';
 import LoadingSpinner from '../components/LoadingSpinner';
-import Header from '../components/Header';
-import { Colors, Typography, Spacing, BorderRadius, Shadows, ComponentStyles } from '../styles/DesignSystem';
+import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../styles/DesignSystem';
+import { Ionicons } from '@expo/vector-icons';
+
+const { width, height } = Dimensions.get('window');
 
 export default function DriverNavigationScreen({ navigation, route }) {
   const { booking } = route.params;
@@ -14,14 +17,29 @@ export default function DriverNavigationScreen({ navigation, route }) {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [routeInfo, setRouteInfo] = useState(null);
   const [estimatedTime, setEstimatedTime] = useState(null);
+  const [allBookings, setAllBookings] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [viewMode, setViewMode] = useState('calendar'); // 'calendar' or 'navigation'
   const mapRef = useRef(null);
   const { user } = useApp();
 
   useEffect(() => {
-    initializeNavigation();
-    const interval = setInterval(updateLocation, 15000);
-    return () => clearInterval(interval);
-  }, []);
+    loadAllBookings();
+    if (viewMode === 'navigation') {
+      initializeNavigation();
+      const interval = setInterval(updateLocation, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [viewMode]);
+
+  const loadAllBookings = async () => {
+    try {
+      const bookings = await bookingsAPI.getBookings(user.id, 'driver');
+      setAllBookings(bookings);
+    } catch (error) {
+      console.error('Error loading bookings:', error);
+    }
+  };
 
   const initializeNavigation = async () => {
     try {
@@ -75,37 +93,41 @@ export default function DriverNavigationScreen({ navigation, route }) {
     );
   };
 
-  const handleArrivedPickup = () => {
+  const handleCompleteRide = () => {
     Alert.alert(
-      'Arrived at Pickup',
-      'Mark that you have arrived at the pickup location?',
+      'Complete Ride',
+      'Mark this ride as completed?',
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Mark Arrived', 
+          text: 'Complete', 
           onPress: () => {
-            Alert.alert('Success', 'Passenger has been notified that you have arrived.');
+            // Handle ride completion
+            navigation.goBack();
           }
         }
       ]
     );
   };
 
-  const handleArrivedDestination = () => {
-    Alert.alert(
-      'Arrived at Destination',
-      'Mark that you have arrived at the destination?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Mark Arrived', 
-          onPress: () => {
-            Alert.alert('Success', 'Ride completed!');
-            navigation.goBack();
-          }
-        }
-      ]
-    );
+  const handleDateSelect = (dayData) => {
+    if (dayData.hasRides) {
+      setSelectedDate(dayData.date);
+    }
+  };
+
+  const toggleViewMode = () => {
+    setViewMode(viewMode === 'calendar' ? 'navigation' : 'calendar');
+  };
+
+  const getSelectedDateRides = () => {
+    if (!selectedDate) return [];
+    return allBookings.filter(booking => {
+      const bookingDate = new Date(booking.departureTime);
+      return bookingDate.getDate() === selectedDate.getDate() &&
+             bookingDate.getMonth() === selectedDate.getMonth() &&
+             bookingDate.getFullYear() === selectedDate.getFullYear();
+    });
   };
 
   if (isLoading) {
@@ -114,141 +136,221 @@ export default function DriverNavigationScreen({ navigation, route }) {
 
   return (
     <View style={styles.container}>
-      <Header title="Navigation" showBack onBack={() => navigation.goBack()} />
+      <StatusBar barStyle="light-content" backgroundColor="#003B73" />
       
-      <View style={styles.mapContainer}>
-        <MapView
-          ref={mapRef}
-          style={styles.map}
-          initialRegion={{
-            latitude: booking.route.fromCoords.latitude,
-            longitude: booking.route.fromCoords.longitude,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          }}
-        >
-          <Marker
-            coordinate={booking.route.fromCoords}
-            title="Pickup Location"
-            description={booking.route.from}
-            pinColor={Colors.primary}
-          />
+      {/* Header Section */}
+      <LinearGradient
+        colors={['#003B73', '#0074D9', '#00BFFF']}
+        style={styles.headerGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerContent}>
+          <View style={styles.headerTop}>
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>
+              {viewMode === 'calendar' ? 'Monthly Schedule' : 'Navigation'}
+            </Text>
+            <TouchableOpacity 
+              style={styles.toggleButton}
+              onPress={toggleViewMode}
+            >
+              <Ionicons 
+                name={viewMode === 'calendar' ? 'navigate' : 'calendar'} 
+                size={24} 
+                color="#FFFFFF" 
+              />
+            </TouchableOpacity>
+          </View>
           
-          <Marker
-            coordinate={booking.route.toCoords}
-            title="Destination"
-            description={booking.route.to}
-            pinColor={Colors.secondary}
-          />
-          
-          {currentLocation && (
-            <Marker
-              coordinate={currentLocation}
-              title="Your Location"
-              description="Driver"
-              pinColor={Colors.accent}
-            />
-          )}
-          
-          {routeInfo && (
-            <Polyline
-              coordinates={routeInfo.coordinates}
-              strokeColor={Colors.primary}
-              strokeWidth={3}
-            />
-          )}
-        </MapView>
-      </View>
-
-      <View style={styles.infoPanel}>
-        <LinearGradient
-          colors={['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.98)']}
-          style={styles.panelGradient}
-        >
-          {/* Ride Info */}
-          <View style={styles.rideInfo}>
-            <View style={styles.routeContainer}>
-              <View style={styles.routeLine}>
-                <View style={styles.locationDot} />
-                <Text style={styles.routeText}>{booking.route.from}</Text>
-              </View>
-              <View style={styles.routeLine}>
-                <View style={[styles.locationDot, styles.destinationDot]} />
-                <Text style={styles.routeText}>{booking.route.to}</Text>
-              </View>
+          {/* Quick Stats */}
+          <View style={styles.statsCard}>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{allBookings.length}</Text>
+              <Text style={styles.statLabel}>Total Rides</Text>
             </View>
-            <View style={styles.timeInfo}>
-              <Text style={styles.departureText}>
-                Departure: {formatTime(booking.departureTime)}
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>
+                {allBookings.filter(b => new Date(b.departureTime) > new Date()).length}
               </Text>
-              {estimatedTime && (
-                <Text style={styles.estimatedText}>
-                  ⏱️ {estimatedTime}
+              <Text style={styles.statLabel}>Upcoming</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>
+                {allBookings.filter(b => b.status === 'completed').length}
+              </Text>
+              <Text style={styles.statLabel}>Completed</Text>
+            </View>
+          </View>
+        </View>
+      </LinearGradient>
+      
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+      >
+        {viewMode === 'calendar' ? (
+          <>
+            {/* Monthly Calendar */}
+            <View style={styles.calendarSection}>
+              <MonthlyTrackingCalendar
+                bookings={allBookings}
+                userType="driver"
+                onDateSelect={handleDateSelect}
+                selectedDate={selectedDate}
+              />
+            </View>
+
+            {/* Selected Date Details */}
+            {selectedDate && (
+              <View style={styles.selectedDateSection}>
+                <Text style={styles.selectedDateTitle}>
+                  Rides for {selectedDate.toLocaleDateString('en-US', { 
+                    weekday: 'long', 
+                    month: 'long', 
+                    day: 'numeric' 
+                  })}
                 </Text>
-              )}
-            </View>
-          </View>
-
-          {/* Passenger Info */}
-          <View style={styles.passengerInfo}>
-            <View style={styles.passengerAvatar}>
-              <Text style={styles.passengerInitial}>{booking.passengerName.charAt(0)}</Text>
-            </View>
-            <View style={styles.passengerDetails}>
-              <Text style={styles.passengerName}>{booking.passengerName}</Text>
-              <Text style={styles.passengerPhone}>{booking.passengerPhone}</Text>
-            </View>
-            <TouchableOpacity style={styles.contactButton} onPress={handleContactPassenger}>
-              <Text style={styles.contactButtonText}>📞</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Route Details */}
-          <View style={styles.routeDetails}>
-            {routeInfo && (
-              <>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Distance:</Text>
-                  <Text style={styles.detailValue}>{routeInfo.distance}</Text>
-                </View>
-                <View style={styles.detailRow}>
-                  <Text style={styles.detailLabel}>Duration:</Text>
-                  <Text style={styles.detailValue}>{routeInfo.duration}</Text>
-                </View>
-              </>
+                
+                {getSelectedDateRides().map((ride, index) => (
+                  <View key={index} style={styles.rideCard}>
+                    <View style={styles.rideHeader}>
+                      <View style={styles.rideInfo}>
+                        <Text style={styles.rideTime}>
+                          {formatTime(ride.departureTime)}
+                        </Text>
+                        <Text style={styles.rideRoute}>
+                          {ride.route.from} → {ride.route.to}
+                        </Text>
+                        <Text style={styles.passengerName}>
+                          Passenger: {ride.passengerName}
+                        </Text>
+                      </View>
+                      <View style={styles.rideStatus}>
+                        <Text style={[
+                          styles.statusText,
+                          { color: ride.status === 'completed' ? Colors.success : Colors.warning }
+                        ]}>
+                          {ride.status}
+                        </Text>
+                        <Text style={styles.ridePrice}>${ride.price.toFixed(2)}</Text>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </View>
             )}
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Price:</Text>
-              <Text style={styles.detailValue}>${booking.price}</Text>
+          </>
+        ) : (
+          <>
+            {/* Navigation View */}
+            <View style={styles.mapSection}>
+              <MapView
+                ref={mapRef}
+                style={styles.map}
+                initialRegion={{
+                  latitude: booking.route.fromCoords.latitude,
+                  longitude: booking.route.fromCoords.longitude,
+                  latitudeDelta: 0.01,
+                  longitudeDelta: 0.01,
+                }}
+              >
+                <Marker
+                  coordinate={booking.route.fromCoords}
+                  title="Pickup Location"
+                  description={booking.route.from}
+                  pinColor={Colors.success}
+                />
+                <Marker
+                  coordinate={booking.route.toCoords}
+                  title="Destination"
+                  description={booking.route.to}
+                  pinColor={Colors.error}
+                />
+                {currentLocation && (
+                  <Marker
+                    coordinate={currentLocation}
+                    title="Your Location"
+                    description="Current position"
+                    pinColor={Colors.primary}
+                  />
+                )}
+                {routeInfo && (
+                  <Polyline
+                    coordinates={routeInfo.coordinates}
+                    strokeColor={Colors.primary}
+                    strokeWidth={3}
+                  />
+                )}
+              </MapView>
             </View>
-          </View>
-
-          {/* Action Buttons */}
-          <View style={styles.actionButtons}>
-            <TouchableOpacity style={styles.arrivedButton} onPress={handleArrivedPickup}>
-              <LinearGradient
-                colors={Colors.gradients.accent}
-                style={styles.buttonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Text style={styles.buttonText}>📍 Arrived at Pickup</Text>
-              </LinearGradient>
-            </TouchableOpacity>
             
-            <TouchableOpacity style={styles.destinationButton} onPress={handleArrivedDestination}>
-              <LinearGradient
-                colors={Colors.gradients.secondary}
-                style={styles.buttonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Text style={styles.buttonText}>✅ Arrived at Destination</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
-      </View>
+            {/* Navigation Info */}
+            <View style={styles.navigationSection}>
+              <View style={styles.navigationCard}>
+                <View style={styles.passengerInfo}>
+                  <View style={styles.passengerAvatar}>
+                    <Text style={styles.passengerInitial}>
+                      {booking.passengerName.charAt(0)}
+                    </Text>
+                  </View>
+                  <View style={styles.passengerDetails}>
+                    <Text style={styles.passengerName}>{booking.passengerName}</Text>
+                    <Text style={styles.passengerPhone}>{booking.passengerPhone}</Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.contactButton}
+                    onPress={handleContactPassenger}
+                  >
+                    <Ionicons name="call" size={20} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+                
+                <View style={styles.routeInfo}>
+                  <View style={styles.routeItem}>
+                    <View style={styles.routeDot} />
+                    <Text style={styles.routeText}>{booking.route.from}</Text>
+                  </View>
+                  <View style={styles.routeLine} />
+                  <View style={styles.routeItem}>
+                    <View style={[styles.routeDot, styles.routeDotDestination]} />
+                    <Text style={styles.routeText}>{booking.route.to}</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.navigationInfo}>
+                  <View style={styles.navigationItem}>
+                    <Ionicons name="time" size={16} color={Colors.textSecondary} />
+                    <Text style={styles.navigationText}>
+                      Departure: {formatTime(booking.departureTime)}
+                    </Text>
+                  </View>
+                  <View style={styles.navigationItem}>
+                    <Ionicons name="navigate" size={16} color={Colors.primary} />
+                    <Text style={styles.navigationText}>
+                      ETA: {estimatedTime || 'Calculating...'}
+                    </Text>
+                  </View>
+                </View>
+                
+                <TouchableOpacity 
+                  style={styles.completeButton}
+                  onPress={handleCompleteRide}
+                >
+                  <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />
+                  <Text style={styles.completeButtonText}>Complete Ride</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
+        )}
+      </ScrollView>
     </View>
   );
 }
@@ -256,159 +358,237 @@ export default function DriverNavigationScreen({ navigation, route }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: '#F8FAFC',
   },
-  mapContainer: {
-    flex: 1,
+  headerGradient: {
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
   },
-  map: {
-    flex: 1,
+  headerContent: {
+    alignItems: 'center',
   },
-  infoPanel: {
-    backgroundColor: 'transparent',
-    padding: Spacing.lg,
-    borderTopLeftRadius: BorderRadius['2xl'],
-    borderTopRightRadius: BorderRadius['2xl'],
-    ...Shadows.lg,
-  },
-  panelGradient: {
-    borderRadius: BorderRadius['2xl'],
-    padding: Spacing.lg,
-  },
-  rideInfo: {
-    marginBottom: Spacing.lg,
-  },
-  routeContainer: {
-    marginBottom: Spacing.md,
-  },
-  routeLine: {
+  headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 20,
   },
-  locationDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.primary,
-    marginRight: Spacing.md,
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  destinationDot: {
-    backgroundColor: Colors.secondary,
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
-  routeText: {
-    fontSize: Typography.lg,
-    fontWeight: Typography.semibold,
-    color: Colors.textPrimary,
+  toggleButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statsCard: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 16,
+    padding: 16,
+    width: '100%',
+    justifyContent: 'space-around',
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+  },
+  content: {
     flex: 1,
   },
-  timeInfo: {
+  contentContainer: {
+    padding: 20,
+    paddingBottom: 100,
+  },
+  calendarSection: {
+    marginBottom: 20,
+  },
+  selectedDateSection: {
+    marginBottom: 20,
+  },
+  selectedDateTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: Colors.textPrimary,
+    marginBottom: 16,
+  },
+  rideCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    ...Shadows.sm,
+  },
+  rideHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  departureText: {
-    fontSize: Typography.sm,
+  rideInfo: {
+    flex: 1,
+  },
+  rideTime: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  rideRoute: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
+  passengerName: {
+    fontSize: 12,
     color: Colors.textSecondary,
   },
-  estimatedText: {
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
+  rideStatus: {
+    alignItems: 'flex-end',
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  ridePrice: {
+    fontSize: 16,
+    fontWeight: 'bold',
     color: Colors.primary,
+  },
+  mapSection: {
+    marginBottom: 20,
+  },
+  map: {
+    height: 300,
+    borderRadius: 16,
+  },
+  navigationSection: {
+    marginBottom: 20,
+  },
+  navigationCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    ...Shadows.sm,
   },
   passengerInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    backgroundColor: Colors.surfaceSecondary,
-    borderRadius: BorderRadius.lg,
+    marginBottom: 20,
   },
   passengerAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.secondary,
-    justifyContent: 'center',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: Colors.primary,
     alignItems: 'center',
-    marginRight: Spacing.md,
-    ...Shadows.sm,
+    justifyContent: 'center',
+    marginRight: 12,
   },
   passengerInitial: {
-    color: Colors.textInverse,
-    fontSize: Typography.lg,
-    fontWeight: Typography.bold,
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   passengerDetails: {
     flex: 1,
   },
   passengerName: {
-    fontSize: Typography.lg,
-    fontWeight: Typography.semibold,
+    fontSize: 16,
+    fontWeight: 'bold',
     color: Colors.textPrimary,
     marginBottom: 2,
   },
   passengerPhone: {
-    fontSize: Typography.sm,
+    fontSize: 14,
     color: Colors.textSecondary,
   },
   contactButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Colors.primary,
-    justifyContent: 'center',
     alignItems: 'center',
-    ...Shadows.sm,
+    justifyContent: 'center',
   },
-  contactButtonText: {
-    fontSize: 20,
-    color: Colors.textInverse,
+  routeInfo: {
+    marginBottom: 20,
   },
-  routeDetails: {
-    marginBottom: Spacing.lg,
-  },
-  detailRow: {
+  routeItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  detailLabel: {
-    fontSize: Typography.sm,
-    color: Colors.textSecondary,
-    fontWeight: Typography.medium,
+  routeDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.success,
+    marginRight: 12,
   },
-  detailValue: {
-    fontSize: Typography.sm,
+  routeDotDestination: {
+    backgroundColor: Colors.error,
+  },
+  routeText: {
+    fontSize: 14,
     color: Colors.textPrimary,
-    fontWeight: Typography.semibold,
   },
-  actionButtons: {
-    gap: Spacing.md,
+  routeLine: {
+    width: 2,
+    height: 20,
+    backgroundColor: Colors.gray300,
+    marginLeft: 5,
+    marginBottom: 8,
   },
-  arrivedButton: {
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
-    ...Shadows.md,
+  navigationInfo: {
+    marginBottom: 20,
   },
-  destinationButton: {
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
-    ...Shadows.md,
+  navigationItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
   },
-  buttonGradient: {
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
+  navigationText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginLeft: 8,
+  },
+  completeButton: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: Colors.success,
+    borderRadius: 12,
+    padding: 16,
   },
-  buttonText: {
-    color: Colors.textInverse,
-    fontSize: Typography.lg,
-    fontWeight: Typography.bold,
-    textShadowColor: 'rgba(0,0,0,0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
+  completeButtonText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginLeft: 8,
   },
-}); 
+});

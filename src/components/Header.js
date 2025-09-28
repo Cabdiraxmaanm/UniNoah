@@ -21,7 +21,7 @@ export default function Header({ title, showBack = false, onBack, showLogout = t
 
   return (
     <LinearGradient
-      colors={Colors.gradients.primary}
+      colors={['#003B73', '#0074D9', '#00BFFF']}
       style={styles.header}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}

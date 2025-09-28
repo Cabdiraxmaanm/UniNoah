@@ -1,25 +1,33 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert, Dimensions } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert, Dimensions, Animated, TextInput, StatusBar, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ridesAPI } from '../services/api';
 import { useApp } from '../utils/AppContext';
 import LoadingSpinner from '../components/LoadingSpinner';
-import Header from '../components/Header';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, ComponentStyles } from '../styles/DesignSystem';
-import Badge from '../components/Badge';
+import { Ionicons } from '@expo/vector-icons';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 export default function StudentSearchRidesScreen({ navigation }) {
   const [rides, setRides] = useState([]);
+  const [filteredRides, setFilteredRides] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const { user, logout } = useApp();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedFilter, setSelectedFilter] = useState('all');
+  const { user } = useApp();
+  
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   const loadRides = async () => {
     try {
       const availableRides = await ridesAPI.getAvailableRides();
       setRides(availableRides);
+      setFilteredRides(availableRides);
     } catch (error) {
       console.error('Error loading rides:', error);
     } finally {
@@ -30,29 +38,70 @@ export default function StudentSearchRidesScreen({ navigation }) {
 
   useEffect(() => {
     loadRides();
+    
+    // Start animations
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 100,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
+
+  // Filter rides based on search and filter
+  useEffect(() => {
+    let filtered = rides;
+    
+    // Search filter
+    if (searchQuery) {
+      filtered = filtered.filter(ride => 
+        ride.driverName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ride.route.from.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ride.route.to.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        ride.vehicle.model.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Status filter
+    if (selectedFilter !== 'all') {
+      if (selectedFilter === 'available') {
+        filtered = filtered.filter(ride => ride.availableSeats > 0);
+      } else if (selectedFilter === 'few-seats') {
+        filtered = filtered.filter(ride => ride.availableSeats > 0 && ride.availableSeats <= 2);
+      } else if (selectedFilter === 'full') {
+        filtered = filtered.filter(ride => ride.availableSeats === 0);
+      }
+    }
+    
+    setFilteredRides(filtered);
+  }, [rides, searchQuery, selectedFilter]);
 
   const onRefresh = () => {
     setRefreshing(true);
     loadRides();
   };
 
-  const handleLogout = async () => {
+  const handleFilterPress = () => {
     Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
+      'Filter Rides',
+      'Choose a filter option',
       [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Logout', 
-          onPress: async () => {
-            await logout();
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'SignUp' }],
-            });
-          }
-        }
+        { text: 'All Rides', onPress: () => setSelectedFilter('all') },
+        { text: 'Available Only', onPress: () => setSelectedFilter('available') },
+        { text: 'Few Seats Left', onPress: () => setSelectedFilter('few-seats') },
+        { text: 'Cancel', style: 'cancel' }
       ]
     );
   };
@@ -87,63 +136,94 @@ export default function StudentSearchRidesScreen({ navigation }) {
     return 'AVAILABLE';
   };
 
-  const renderRide = ({ item }) => (
-    <View style={styles.rideCard}>
+  const renderRide = ({ item, index }) => (
+    <Animated.View 
+      style={[
+        styles.rideCard,
+        {
+          opacity: fadeAnim,
+          transform: [
+            { translateY: slideAnim },
+            { scale: scaleAnim }
+          ],
+        },
+      ]}
+    >
       <LinearGradient
-        colors={['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.98)']}
+        colors={['#FFFFFF', '#F8FAFC']}
         style={styles.cardGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       >
-        {/* Header with route and price */}
-        <View style={styles.rideHeader}>
-          <View style={styles.routeContainer}>
+        {/* Route Header */}
+        <View style={styles.routeHeader}>
+          <View style={styles.routeInfo}>
             <View style={styles.routeLine}>
-              <View style={styles.locationDot} />
-              <Text style={styles.routeText}>{item.route.from}</Text>
+              <View style={styles.locationDot}>
+                <Ionicons name="location" size={12} color="#FFFFFF" />
+              </View>
+              <Text style={styles.fromText}>{item.route.from}</Text>
+            </View>
+            <View style={styles.routeDivider}>
+              <View style={styles.dividerLine} />
+              <Ionicons name="arrow-down" size={16} color={Colors.primary} />
+              <View style={styles.dividerLine} />
             </View>
             <View style={styles.routeLine}>
-              <View style={[styles.locationDot, styles.destinationDot]} />
-              <Text style={styles.routeText}>{item.route.to}</Text>
+              <View style={[styles.locationDot, styles.destinationDot]}>
+                <Ionicons name="flag" size={12} color="#FFFFFF" />
+              </View>
+              <Text style={styles.toText}>{item.route.to}</Text>
             </View>
           </View>
-          <View style={styles.priceContainer}>
+          <View style={styles.priceSection}>
             <Text style={styles.price}>${item.price}</Text>
             <Text style={styles.priceLabel}>per seat</Text>
           </View>
         </View>
 
-        {/* Driver and vehicle info */}
-        <View style={styles.driverSection}>
+        {/* Driver Info */}
+        <View style={styles.driverCard}>
           <View style={styles.driverInfo}>
             <View style={styles.driverAvatar}>
               <Text style={styles.driverInitial}>{item.driverName.charAt(0)}</Text>
             </View>
             <View style={styles.driverDetails}>
               <Text style={styles.driverName}>{item.driverName}</Text>
-              <Text style={styles.vehicleInfo}>
-                {item.vehicle.model} • {item.vehicle.plate}
-              </Text>
+              <View style={styles.vehicleRow}>
+                <Ionicons name="car" size={14} color={Colors.textSecondary} />
+                <Text style={styles.vehicleText}>{item.vehicle.model} • {item.vehicle.plate}</Text>
+              </View>
             </View>
           </View>
-          <Badge 
-            label={getStatusText(item.availableSeats)} 
-            variant={item.availableSeats === 0 ? 'error' : item.availableSeats <= 2 ? 'warning' : 'success'}
-          />
-        </View>
-
-        {/* Trip details */}
-        <View style={styles.tripDetails}>
-          <View style={styles.detailItem}>
-            <Text style={styles.detailText}>Time: {formatTime(item.departureTime)}</Text>
-          </View>
-          <View style={styles.detailItem}>
-            <Text style={styles.detailText}>Date: {formatDate(item.departureTime)}</Text>
-          </View>
-          <View style={styles.detailItem}>
-            <Text style={styles.detailText}>Seats: {item.availableSeats} left</Text>
+          <View style={[
+            styles.statusBadge,
+            { backgroundColor: getStatusColor(item.availableSeats) }
+          ]}>
+            <Text style={styles.statusText}>{getStatusText(item.availableSeats)}</Text>
           </View>
         </View>
 
-        {/* Action button */}
+        {/* Trip Details Grid */}
+        <View style={styles.detailsGrid}>
+          <View style={styles.detailCard}>
+            <Ionicons name="time" size={20} color={Colors.primary} />
+            <Text style={styles.detailLabel}>Departure</Text>
+            <Text style={styles.detailValue}>{formatTime(item.departureTime)}</Text>
+          </View>
+          <View style={styles.detailCard}>
+            <Ionicons name="calendar" size={20} color={Colors.primary} />
+            <Text style={styles.detailLabel}>Date</Text>
+            <Text style={styles.detailValue}>{formatDate(item.departureTime)}</Text>
+          </View>
+          <View style={styles.detailCard}>
+            <Ionicons name="people" size={20} color={Colors.primary} />
+            <Text style={styles.detailLabel}>Seats</Text>
+            <Text style={styles.detailValue}>{item.availableSeats} left</Text>
+          </View>
+        </View>
+
+        {/* Book Button */}
         <TouchableOpacity
           style={[
             styles.bookButton,
@@ -153,18 +233,24 @@ export default function StudentSearchRidesScreen({ navigation }) {
           disabled={item.availableSeats === 0}
         >
           <LinearGradient
-            colors={item.availableSeats === 0 ? [Colors.gray400, Colors.gray500] : Colors.gradients.primary}
+            colors={item.availableSeats === 0 ? ['#9CA3AF', '#6B7280'] : Colors.gradients.primary}
             style={styles.bookButtonGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           >
+            <Ionicons 
+              name={item.availableSeats === 0 ? "close-circle" : "arrow-forward"} 
+              size={20} 
+              color="#FFFFFF" 
+              style={{ marginRight: 8 }}
+            />
             <Text style={styles.bookButtonText}>
               {item.availableSeats === 0 ? 'Fully Booked' : 'Book This Ride'}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
       </LinearGradient>
-    </View>
+    </Animated.View>
   );
 
   if (isLoading) {
@@ -173,34 +259,125 @@ export default function StudentSearchRidesScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <Header 
-        title="Available Rides" 
-        showLogout={true}
-        onLogout={handleLogout}
-      />
+      <StatusBar barStyle="light-content" backgroundColor="#003B73" />
       
-      {/* Navigation Menu */}
-      <View style={styles.navMenu}>
+      {/* Header Section */}
+      <LinearGradient
+        colors={['#003B73', '#0074D9', '#00BFFF']}
+        style={styles.headerGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerContent}>
+          <View style={styles.headerTop}>
         <TouchableOpacity 
-          style={[styles.navButton, styles.activeNavButton]} 
-          onPress={() => navigation.navigate('StudentSearchRides')}
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
         >
-          <Text style={[styles.navButtonText, styles.activeNavButtonText]}>Search Rides</Text>
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
         </TouchableOpacity>
+            <Text style={styles.headerTitle}>Find Rides</Text>
         <TouchableOpacity 
-          style={styles.navButton} 
-          onPress={() => navigation.navigate('StudentRideHistory')}
+              style={styles.filterButton}
+              onPress={handleFilterPress}
         >
-          <Text style={styles.navButtonText}>Ride History</Text>
+              <Ionicons name="options-outline" size={24} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
       
-      {rides.length === 0 ? (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>🚗</View>
-          <Text style={styles.emptyTitle}>No rides available</Text>
+          {/* Search Bar */}
+          <Animated.View 
+            style={[
+              styles.searchContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <View style={styles.searchInputContainer}>
+              <Ionicons name="search" size={20} color={Colors.textSecondary} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search rides, drivers, or destinations..."
+                placeholderTextColor={Colors.textSecondary}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Ionicons name="close-circle" size={20} color={Colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </Animated.View>
+
+          {/* Filter Chips */}
+          <Animated.View 
+            style={[
+              styles.filterContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {[
+                { key: 'all', label: 'All Rides', icon: 'grid' },
+                { key: 'available', label: 'Available', icon: 'checkmark-circle' },
+                { key: 'few-seats', label: 'Few Seats', icon: 'warning' },
+                { key: 'full', label: 'Full', icon: 'close-circle' },
+              ].map((filter) => (
+                <TouchableOpacity
+                  key={filter.key}
+                  style={[
+                    styles.filterChip,
+                    selectedFilter === filter.key && styles.filterChipActive
+                  ]}
+                  onPress={() => setSelectedFilter(filter.key)}
+                >
+                  <Ionicons 
+                    name={filter.icon} 
+                    size={16} 
+                    color={selectedFilter === filter.key ? '#FFFFFF' : Colors.primary} 
+                  />
+                  <Text style={[
+                    styles.filterChipText,
+                    selectedFilter === filter.key && styles.filterChipTextActive
+                  ]}>
+                    {filter.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Animated.View>
+        </View>
+      </LinearGradient>
+      
+      {/* Content */}
+      <View style={styles.content}>
+        {filteredRides.length === 0 ? (
+          <Animated.View 
+            style={[
+              styles.emptyState,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <View style={styles.emptyIconContainer}>
+              <Ionicons name="car-outline" size={64} color={Colors.primary} />
+            </View>
+            <Text style={styles.emptyTitle}>
+              {searchQuery || selectedFilter !== 'all' ? 'No matching rides' : 'No rides available'}
+            </Text>
           <Text style={styles.emptySubtitle}>
-            Check back later for new rides or try refreshing
+              {searchQuery || selectedFilter !== 'all' 
+                ? 'Try adjusting your search or filters' 
+                : 'Check back later for new rides or try refreshing'
+              }
           </Text>
           <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
             <LinearGradient
@@ -209,13 +386,14 @@ export default function StudentSearchRidesScreen({ navigation }) {
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
+                <Ionicons name="refresh" size={20} color="#FFFFFF" />
               <Text style={styles.refreshButtonText}>Refresh</Text>
             </LinearGradient>
           </TouchableOpacity>
-        </View>
+          </Animated.View>
       ) : (
         <FlatList
-          data={rides}
+            data={filteredRides}
           keyExtractor={item => item.id}
           renderItem={renderRide}
           contentContainerStyle={styles.listContainer}
@@ -225,6 +403,7 @@ export default function StudentSearchRidesScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         />
       )}
+      </View>
     </View>
   );
 }
@@ -234,101 +413,184 @@ const styles = StyleSheet.create({
     flex: 1, 
     backgroundColor: Colors.background,
   },
-  navMenu: {
-    flexDirection: 'row',
-    backgroundColor: Colors.surface,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray200,
-    ...Shadows.sm,
+  
+  // Header Styles
+  headerGradient: {
+    paddingTop: 50,
+    paddingBottom: 20,
   },
-  navButton: {
-    flex: 1,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    marginHorizontal: Spacing.xs,
-    borderRadius: BorderRadius.lg,
+  headerContent: {
+    paddingHorizontal: 20,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  activeNavButton: {
-    backgroundColor: Colors.primary,
-    ...Shadows.sm,
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
-  navButtonText: {
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
-    color: Colors.textSecondary,
+  logoutButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  activeNavButtonText: {
-    color: Colors.textInverse,
+  
+  // Search Styles
+  searchContainer: {
+    marginBottom: 16,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    ...Shadows.md,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 12,
+    fontSize: 16,
+    color: Colors.textPrimary,
+  },
+  
+  // Filter Styles
+  filterContainer: {
+    marginBottom: 8,
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 12,
+  },
+  filterChipActive: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  filterChipText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+  
+  // Content Styles
+  content: {
+    flex: 1,
+    backgroundColor: Colors.background,
   },
   listContainer: {
-    padding: Spacing.lg,
-    paddingBottom: Spacing['2xl'],
+    padding: 20,
+    paddingBottom: 150, // Adjusted for floating navigation bar
   },
+  
+  // Ride Card Styles
   rideCard: {
-    marginBottom: Spacing.lg,
-    borderRadius: BorderRadius['2xl'],
+    marginBottom: 20,
+    borderRadius: 16,
     overflow: 'hidden',
     ...Shadows.lg,
   },
   cardGradient: {
-    padding: Spacing.lg,
+    padding: 20,
   },
-  rideHeader: {
+  
+  // Route Header
+  routeHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: Spacing.lg,
+    marginBottom: 16,
   },
-  routeContainer: {
+  routeInfo: {
     flex: 1,
-    marginRight: Spacing.lg,
+    marginRight: 16,
   },
   routeLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
+    marginBottom: 8,
   },
   locationDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: Colors.primary,
-    marginRight: Spacing.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    ...Shadows.sm,
   },
   destinationDot: {
     backgroundColor: Colors.secondary,
   },
-  routeText: {
-    fontSize: Typography.lg,
-    fontWeight: Typography.semibold,
+  fromText: {
+    fontSize: 16,
+    fontWeight: '600',
     color: Colors.textPrimary,
     flex: 1,
   },
-  priceContainer: {
+  toText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    flex: 1,
+  },
+  routeDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.gray300,
+  },
+  priceSection: {
     alignItems: 'flex-end',
   },
   price: {
-    fontSize: Typography['2xl'],
-    fontWeight: Typography.bold,
+    fontSize: 24,
+    fontWeight: 'bold',
     color: Colors.success,
   },
   priceLabel: {
-    fontSize: Typography.xs,
+    fontSize: 12,
     color: Colors.textSecondary,
     marginTop: 2,
   },
-  driverSection: {
+  
+  // Driver Card
+  driverCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
     backgroundColor: Colors.surfaceSecondary,
-    borderRadius: BorderRadius.lg,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
   },
   driverInfo: {
     flexDirection: 'row',
@@ -336,65 +598,79 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   driverAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: Spacing.md,
+    marginRight: 12,
     ...Shadows.sm,
   },
   driverInitial: {
-    color: Colors.textInverse,
-    fontSize: Typography.lg,
-    fontWeight: Typography.bold,
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   driverDetails: {
     flex: 1,
   },
   driverName: {
-    fontSize: Typography.lg,
-    fontWeight: Typography.semibold,
+    fontSize: 16,
+    fontWeight: '600',
     color: Colors.textPrimary,
-    marginBottom: 2,
+    marginBottom: 4,
   },
-  vehicleInfo: {
-    fontSize: Typography.sm,
+  vehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  vehicleText: {
+    fontSize: 14,
     color: Colors.textSecondary,
+    marginLeft: 6,
   },
   statusBadge: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     ...Shadows.sm,
   },
   statusText: {
-    color: Colors.textInverse,
-    fontSize: Typography.xs,
-    fontWeight: Typography.bold,
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
-  tripDetails: {
+  
+  // Details Grid
+  detailsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: Spacing.lg,
-    paddingHorizontal: Spacing.sm,
+    marginBottom: 20,
   },
-  detailItem: {
-    alignItems: 'center',
+  detailCard: {
     flex: 1,
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceSecondary,
+    padding: 12,
+    borderRadius: 12,
+    marginHorizontal: 4,
   },
-  detailIcon: {
-    fontSize: 20,
-    marginBottom: 4,
-  },
-  detailText: {
-    fontSize: Typography.xs,
+  detailLabel: {
+    fontSize: 12,
     color: Colors.textSecondary,
-    textAlign: 'center',
+    marginTop: 4,
+    marginBottom: 2,
   },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  
+  // Book Button
   bookButton: {
-    borderRadius: BorderRadius.lg,
+    borderRadius: 12,
     overflow: 'hidden',
     ...Shadows.md,
   },
@@ -402,57 +678,64 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   bookButtonGradient: {
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
+    flexDirection: 'row',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   bookButtonText: { 
-    color: Colors.textInverse, 
-    fontWeight: Typography.bold, 
-    fontSize: Typography.lg,
-    textShadowColor: 'rgba(0,0,0,0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
+    color: '#FFFFFF', 
+    fontWeight: 'bold', 
+    fontSize: 16,
   },
+  
+  // Empty State
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: Spacing['2xl'],
+    padding: 40,
   },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: Spacing.lg,
+  emptyIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: Colors.surfaceSecondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
   },
   emptyTitle: {
-    fontSize: Typography.xl,
-    fontWeight: Typography.bold,
+    fontSize: 20,
+    fontWeight: 'bold',
     color: Colors.textPrimary,
-    marginBottom: Spacing.sm,
+    marginBottom: 8,
     textAlign: 'center',
   },
   emptySubtitle: {
-    fontSize: Typography.lg,
+    fontSize: 16,
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginBottom: Spacing['2xl'],
-    lineHeight: Typography.lineHeight.normal,
+    marginBottom: 32,
+    lineHeight: 24,
   },
   refreshButton: {
-    borderRadius: BorderRadius.lg,
+    borderRadius: 12,
     overflow: 'hidden',
     ...Shadows.md,
   },
   refreshButtonGradient: {
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
+    flexDirection: 'row',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
   refreshButtonText: {
-    color: Colors.textInverse,
-    fontWeight: Typography.bold,
-    fontSize: Typography.lg,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginLeft: 8,
   },
 }); 

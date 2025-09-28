@@ -83,6 +83,34 @@ export default function SignUpScreen({ navigation }) {
               </View>
             </LinearGradient>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.card, styles.adminCard]}
+            activeOpacity={0.9}
+            onPress={() => {
+              navigation.navigate('AdminAuth');
+            }}
+          >
+            <LinearGradient
+              colors={['#8B5CF6', '#A78BFA', '#C4B5FD']}
+              style={styles.cardGradient}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <View style={styles.cardContent}>
+                <View style={styles.iconContainer}>
+                  <Ionicons name="shield-checkmark-outline" size={28} color={Colors.textInverse} />
+                </View>
+                <View style={styles.cardTextContainer}>
+                  <Text style={styles.cardTitle}>Admin</Text>
+                  <Text style={styles.cardSubtitle}>Manage the platform</Text>
+                </View>
+                <View style={styles.arrowContainer}>
+                  <Ionicons name="chevron-forward" size={20} color={Colors.textInverse} />
+                </View>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
         </View>
 
         {/* Features Section removed as requested */}
@@ -160,6 +188,10 @@ const styles = StyleSheet.create({
   driverCard: {
     borderLeftWidth: 4,
     borderLeftColor: Colors.secondary,
+  },
+  adminCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#8B5CF6',
   },
   cardGradient: {
     padding: 0,

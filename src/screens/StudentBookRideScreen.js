@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Dimensions, TextInput } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, ScrollView, Dimensions, TextInput, StatusBar, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { bookingsAPI, requestsAPI } from '../services/api';
 import { useApp } from '../utils/AppContext';
 import LoadingSpinner from '../components/LoadingSpinner';
-import Header from '../components/Header';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, ComponentStyles } from '../styles/DesignSystem';
+import { Ionicons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
 
@@ -13,7 +13,35 @@ export default function StudentBookRideScreen({ navigation, route }) {
   const { ride } = route.params;
   const [isLoading, setIsLoading] = useState(false);
   const [pickupAddress, setPickupAddress] = useState('');
+  const [focusedInput, setFocusedInput] = useState(null);
   const { user, addBooking } = useApp();
+  
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+
+  React.useEffect(() => {
+    // Start animations
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 100,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   const formatTime = (dateString) => {
     const date = new Date(dateString);
@@ -52,16 +80,21 @@ export default function StudentBookRideScreen({ navigation, route }) {
       await requestsAPI.createRequest(requestData);
       
       Alert.alert(
-        'Request Sent!',
-        `Your request was sent to ${ride.driverName}. You will see the booking once accepted.`,
+        '🎉 Request Sent Successfully!',
+        `Your ride request has been sent to ${ride.driverName}. You'll receive a notification once the driver responds.\n\n📍 Route: ${ride.route.from} → ${ride.route.to}\n💰 Price: $${ride.price}\n⏰ Departure: ${formatTime(ride.departureTime)}`,
         [
           {
-            text: 'View Requests',
-            onPress: () => navigation.navigate('StudentRideHistory'),
+            text: 'View My Requests',
+            onPress: () => navigation.navigate('StudentRequests'),
           },
           {
-            text: 'Continue',
+            text: 'Find More Rides',
             onPress: () => navigation.navigate('StudentSearchRides'),
+          },
+          {
+            text: 'Go Home',
+            onPress: () => navigation.navigate('StudentTabs'),
+            style: 'default'
           },
         ]
       );
@@ -78,150 +111,242 @@ export default function StudentBookRideScreen({ navigation, route }) {
 
   return (
     <View style={styles.container}>
-      <Header title="Book Ride" showBack onBack={() => navigation.goBack()} />
+      <StatusBar barStyle="light-content" backgroundColor="#003B73" />
       
-      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
-        {/* Hero Section */}
-        <View style={styles.heroSection}>
+      {/* Header Section */}
           <LinearGradient
-            colors={Colors.gradients.primary}
-            style={styles.heroGradient}
+            colors={['#003B73', '#0074D9', '#00BFFF']}
+        style={styles.headerGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-          >
-            <View style={styles.routeContainer}>
-              <View style={styles.routePoint}>
-                <View style={styles.routeDot} />
-                <Text style={styles.routeText}>{ride.route.from}</Text>
-              </View>
-              <View style={styles.routeLine} />
-              <View style={styles.routePoint}>
-                <View style={[styles.routeDot, styles.routeDotDestination]} />
-                <Text style={styles.routeText}>{ride.route.to}</Text>
-              </View>
-            </View>
-            <View style={styles.priceContainer}>
-              <Text style={styles.priceLabel}>Total Price</Text>
-              <Text style={styles.price}>${ride.price}</Text>
-            </View>
-          </LinearGradient>
-        </View>
-
-        {/* Ride Details Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            
-            <Text style={styles.cardTitle}>Ride Details</Text>
+      >
+        <View style={styles.headerContent}>
+          <View style={styles.headerTop}>
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Book Ride</Text>
+            <View style={styles.placeholder} />
           </View>
           
-          <View style={styles.detailsGrid}>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailIcon}>📅</Text>
-              <Text style={styles.detailLabel}>Date</Text>
-              <Text style={styles.detailValue}>{formatDate(ride.departureTime)}</Text>
+          {/* Route Display */}
+          <Animated.View 
+            style={[
+              styles.routeSection,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <View style={styles.routeInfo}>
+              <View style={styles.routeLine}>
+                <View style={styles.locationDot}>
+                  <Ionicons name="location" size={12} color="#FFFFFF" />
+                </View>
+                <Text style={styles.fromText}>{ride.route.from}</Text>
+              </View>
+              <View style={styles.routeDivider}>
+                <View style={styles.dividerLine} />
+                <Ionicons name="arrow-down" size={16} color="#FFFFFF" />
+                <View style={styles.dividerLine} />
+              </View>
+              <View style={styles.routeLine}>
+                <View style={[styles.locationDot, styles.destinationDot]}>
+                  <Ionicons name="flag" size={12} color="#FFFFFF" />
+                </View>
+                <Text style={styles.toText}>{ride.route.to}</Text>
+              </View>
             </View>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailIcon}>🕒</Text>
-              <Text style={styles.detailLabel}>Time</Text>
-              <Text style={styles.detailValue}>{formatTime(ride.departureTime)}</Text>
+            <View style={styles.priceSection}>
+              <Text style={styles.price}>${ride.price}</Text>
+              <Text style={styles.priceLabel}>per seat</Text>
             </View>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailIcon}>💺</Text>
-              <Text style={styles.detailLabel}>Seats</Text>
-              <Text style={styles.detailValue}>{ride.availableSeats} available</Text>
+          </Animated.View>
+        </View>
+      </LinearGradient>
+
+      {/* Content */}
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+        {/* Elegant Ride Details Card */}
+        <Animated.View 
+          style={[
+            styles.elegantRideDetailsCard,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          <View style={styles.elegantCardHeader}>
+            <Text style={styles.elegantCardTitle}>Ride Details</Text>
+            <View style={styles.elegantDivider} />
+          </View>
+          
+          <View style={styles.elegantDetailsContainer}>
+            {/* Date & Time Row */}
+            <View style={styles.elegantDetailRow}>
+              <View style={styles.elegantDetailItem}>
+                <View style={styles.elegantIconWrapper}>
+                  <Ionicons name="calendar-outline" size={20} color="#003B73" />
+                </View>
+                <View style={styles.elegantDetailText}>
+                  <Text style={styles.elegantDetailLabel}>Date</Text>
+                  <Text style={styles.elegantDetailValue}>{formatDate(ride.departureTime)}</Text>
+                </View>
+              </View>
+              
+              <View style={styles.elegantDetailItem}>
+                <View style={styles.elegantIconWrapper}>
+                  <Ionicons name="time-outline" size={20} color="#0074D9" />
+                </View>
+                <View style={styles.elegantDetailText}>
+                  <Text style={styles.elegantDetailLabel}>Time</Text>
+                  <Text style={styles.elegantDetailValue}>{formatTime(ride.departureTime)}</Text>
+                </View>
+              </View>
             </View>
-            <View style={styles.detailItem}>
-              <Text style={styles.detailIcon}>💰</Text>
-              <Text style={styles.detailLabel}>Price</Text>
-              <Text style={styles.detailValue}>${ride.price}</Text>
+
+            {/* Seats & Price Row */}
+            <View style={styles.elegantDetailRow}>
+              <View style={styles.elegantDetailItem}>
+                <View style={styles.elegantIconWrapper}>
+                  <Ionicons name="people-outline" size={20} color="#00BFFF" />
+                </View>
+                <View style={styles.elegantDetailText}>
+                  <Text style={styles.elegantDetailLabel}>Seats</Text>
+                  <Text style={styles.elegantDetailValue}>{ride.availableSeats} left</Text>
+                </View>
+              </View>
+              
+              <View style={styles.elegantDetailItem}>
+                <View style={styles.elegantIconWrapper}>
+                  <Ionicons name="cash-outline" size={20} color="#F59E0B" />
+                </View>
+                <View style={styles.elegantDetailText}>
+                  <Text style={styles.elegantDetailLabel}>Price</Text>
+                  <Text style={styles.elegantDetailValue}>${ride.price}</Text>
+            </View>
+            </View>
             </View>
           </View>
-        </View>
+        </Animated.View>
 
         {/* Driver Information Card */}
-        <View style={styles.card}>
+        <Animated.View 
+          style={[
+            styles.card,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
           <View style={styles.cardHeader}>
-            
+            <Ionicons name="person" size={24} color={Colors.primary} />
             <Text style={styles.cardTitle}>Driver Information</Text>
           </View>
           
-          <View style={styles.driverSection}>
+          <View style={styles.driverCard}>
+            <View style={styles.driverInfo}>
             <View style={styles.driverAvatar}>
               <Text style={styles.driverInitial}>{ride.driverName.charAt(0)}</Text>
             </View>
-            <View style={styles.driverInfo}>
+              <View style={styles.driverDetails}>
               <Text style={styles.driverName}>{ride.driverName}</Text>
-              <Text style={styles.vehicleInfo}>
-                {ride.vehicle.model} • {ride.vehicle.plate}
-              </Text>
-              <Text style={styles.vehicleColor}>{ride.vehicle.color}</Text>
-            </View>
-            <View style={styles.ratingContainer}>
-              <Text style={styles.ratingText}>⭐ 4.8</Text>
+                <View style={styles.vehicleRow}>
+                  <Ionicons name="car" size={14} color={Colors.textSecondary} />
+                  <Text style={styles.vehicleText}>{ride.vehicle.model} • {ride.vehicle.plate}</Text>
+                </View>
+                <View style={styles.ratingRow}>
+                  <Text style={styles.vehicleColor}>{ride.vehicle.color}</Text>
+                  <View style={styles.ratingContainer}>
+                    <Ionicons name="star" size={14} color="#F59E0B" />
+                    <Text style={styles.ratingText}>4.8</Text>
+                  </View>
+                </View>
+              </View>
             </View>
           </View>
-        </View>
+        </Animated.View>
 
-        {/* Passenger Information Card */}
-        <View style={styles.card}>
+        {/* Your Information Card */}
+        <Animated.View 
+          style={[
+            styles.card,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
           <View style={styles.cardHeader}>
-            
+            <Ionicons name="person-circle" size={24} color={Colors.primary} />
             <Text style={styles.cardTitle}>Your Information</Text>
           </View>
           
-          <View style={styles.passengerSection}>
-            <View style={styles.passengerAvatar}>
-              <Text style={styles.passengerInitial}>{user.name.charAt(0)}</Text>
-            </View>
+          <View style={styles.passengerCard}>
             <View style={styles.passengerInfo}>
-              <Text style={styles.passengerName}>{user.name}</Text>
-              <Text style={styles.passengerDetails}>{user.email}</Text>
-              <Text style={styles.passengerDetails}>{user.phone}</Text>
-              <Text style={styles.passengerDetails}>{user.university}</Text>
+            <View style={styles.passengerAvatar}>
+              <Text style={styles.passengerInitial}>{user?.name?.charAt(0) || 'S'}</Text>
+            </View>
+              <View style={styles.passengerDetails}>
+              <Text style={styles.passengerName}>{user?.name || 'Student'}</Text>
+                <Text style={styles.passengerDetail}>{user?.email || 'student@example.com'}</Text>
+                <Text style={styles.passengerDetail}>{user?.phone || 'N/A'}</Text>
+                <Text style={styles.passengerDetail}>{user?.university || 'University'}</Text>
+              </View>
             </View>
           </View>
-        </View>
+        </Animated.View>
 
-        {/* Optional Pickup Address */}
-        <View style={styles.card}>
+        {/* Pickup Address Card */}
+        <Animated.View 
+          style={[
+            styles.card,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
           <View style={styles.cardHeader}>
-            <Text style={styles.cardIcon}>📍</Text>
+            <Ionicons name="location" size={24} color={Colors.primary} />
             <Text style={styles.cardTitle}>Pickup Address (Optional)</Text>
           </View>
-          <View style={{
-            backgroundColor: Colors.surfaceSecondary,
-            borderRadius: BorderRadius.lg,
-            padding: Spacing.md,
-          }}>
-            <Text style={{
-              fontSize: Typography.xs,
-              color: Colors.textSecondary,
-              marginBottom: Spacing.xs,
-            }}>
-              Example: House 12, Sha’ab Area, Hargeisa
-            </Text>
+          
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Where should the driver pick you up?</Text>
+            <Text style={styles.inputHint}>Example: House 12, Sha'ab Area, Hargeisa</Text>
             <TextInput
-              style={{
-                backgroundColor: Colors.white,
-                borderRadius: BorderRadius.md,
-                borderWidth: 1,
-                borderColor: Colors.gray200,
-                paddingHorizontal: Spacing.md,
-                paddingVertical: Spacing.sm,
-                fontSize: Typography.base,
-                color: Colors.textPrimary,
-              }}
+              style={[
+                styles.textInput,
+                focusedInput === 'pickup' && styles.textInputFocused
+              ]}
               placeholder="Enter pickup address (optional)"
               placeholderTextColor={Colors.textTertiary}
               value={pickupAddress}
               onChangeText={setPickupAddress}
+              onFocus={() => setFocusedInput('pickup')}
+              onBlur={() => setFocusedInput(null)}
               autoCapitalize="words"
             />
           </View>
-        </View>
+        </Animated.View>
 
         {/* Booking Summary Card */}
-        <View style={styles.summaryCard}>
+        <Animated.View 
+          style={[
+            styles.summaryCard,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
           <LinearGradient
             colors={Colors.gradients.secondary}
             style={styles.summaryGradient}
@@ -229,7 +354,7 @@ export default function StudentBookRideScreen({ navigation, route }) {
             end={{ x: 1, y: 1 }}
           >
             <View style={styles.summaryHeader}>
-            
+              <Ionicons name="receipt" size={24} color="#FFFFFF" />
               <Text style={styles.summaryTitle}>Booking Summary</Text>
             </View>
             
@@ -252,26 +377,40 @@ export default function StudentBookRideScreen({ navigation, route }) {
               </View>
             </View>
           </LinearGradient>
-        </View>
+        </Animated.View>
 
-        {/* Book Button */}
-        <TouchableOpacity 
-          style={styles.bookButton} 
-          onPress={handleBookRide}
-          disabled={ride.availableSeats === 0}
-        >
-          <LinearGradient
-            colors={ride.availableSeats === 0 ? [Colors.gray400, Colors.gray500] : Colors.gradients.primary}
-            style={styles.bookButtonGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          >
-            <Text style={styles.bookButtonIcon}>🚀</Text>
-            <Text style={styles.bookButtonText}>
-              {ride.availableSeats === 0 ? 'No Seats Available' : 'Confirm Booking'}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
+         {/* Confirm Booking Section */}
+         <Animated.View
+           style={[
+             styles.confirmBookingSection,
+             {
+               opacity: fadeAnim,
+               transform: [{ translateY: slideAnim }],
+             },
+           ]}
+         >
+           <TouchableOpacity 
+             style={styles.bookButton} 
+             onPress={handleBookRide}
+             disabled={ride.availableSeats === 0}
+           >
+             <LinearGradient
+                 colors={ride.availableSeats === 0 ? ['#9CA3AF', '#6B7280'] : Colors.gradients.primary}
+               style={styles.bookButtonGradient}
+               start={{ x: 0, y: 0 }}
+               end={{ x: 1, y: 1 }}
+             >
+                 <Ionicons 
+                   name={ride.availableSeats === 0 ? "close-circle" : "checkmark-circle"} 
+                   size={24} 
+                   color="#FFFFFF" 
+                 />
+               <Text style={styles.bookButtonText}>
+                 {ride.availableSeats === 0 ? 'No Seats Available' : 'Confirm Booking'}
+               </Text>
+             </LinearGradient>
+           </TouchableOpacity>
+         </Animated.View>
       </ScrollView>
     </View>
   );
@@ -282,274 +421,438 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  
+  // Header Styles
+  headerGradient: {
+    paddingTop: 50,
+    paddingBottom: 20,
+  },
+  headerContent: {
+    paddingHorizontal: 20,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  placeholder: {
+    width: 40,
+  },
+  
+  // Route Section
+  routeSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  routeInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  routeLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  locationDot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    ...Shadows.sm,
+  },
+  destinationDot: {
+    backgroundColor: 'rgba(16, 185, 129, 0.8)',
+  },
+  fromText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  toText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    flex: 1,
+  },
+  routeDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 4,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  priceSection: {
+    alignItems: 'flex-end',
+  },
+  price: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  priceLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+  },
+  
+  // Content Styles
   content: {
     flex: 1,
   },
   contentContainer: {
-    padding: Spacing.lg,
-    paddingBottom: Spacing['2xl'],
+    padding: 20,
+    paddingBottom: 150, // Adjusted for floating navigation bar
   },
-  heroSection: {
-    marginBottom: Spacing.lg,
-    borderRadius: BorderRadius['2xl'],
-    overflow: 'hidden',
-    ...Shadows.lg,
-  },
-  heroGradient: {
-    padding: Spacing.lg,
-  },
-  routeContainer: {
-    marginBottom: Spacing.lg,
-  },
-  routePoint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: Spacing.sm,
-  },
-  routeDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: Colors.textInverse,
-    marginRight: Spacing.md,
-    ...Shadows.sm,
-  },
-  routeDotDestination: {
-    backgroundColor: Colors.secondary,
-  },
-  routeLine: {
-    width: 2,
-    height: 20,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-    marginLeft: 5,
-    marginVertical: 4,
-  },
-  routeText: {
-    fontSize: Typography.lg,
-    fontWeight: Typography.semibold,
-    color: Colors.textInverse,
-    textShadowColor: 'rgba(0,0,0,0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
-  },
-  priceContainer: {
-    alignItems: 'center',
-  },
-  priceLabel: {
-    fontSize: Typography.sm,
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: Spacing.xs,
-  },
-  price: {
-    fontSize: Typography['3xl'],
-    fontWeight: Typography.bold,
-    color: Colors.textInverse,
-    textShadowColor: 'rgba(0,0,0,0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
-  },
+  
+  // Card Styles
   card: {
-    backgroundColor: Colors.surface,
-    borderRadius: BorderRadius['2xl'],
-    padding: Spacing.lg,
-    marginBottom: Spacing.lg,
-    ...Shadows.md,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 20,
+    ...Shadows.lg,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  cardIcon: {
-    fontSize: 24,
-    marginRight: Spacing.sm,
+    marginBottom: 16,
   },
   cardTitle: {
-    fontSize: Typography.lg,
-    fontWeight: Typography.semibold,
+    fontSize: 18,
+    fontWeight: '600',
     color: Colors.textPrimary,
+    marginLeft: 12,
   },
+  
+  // Details Grid
   detailsGrid: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
-  detailItem: {
-    width: '48%',
+  detailCard: {
+    flex: 1,
     alignItems: 'center',
-    marginBottom: Spacing.md,
-    padding: Spacing.md,
     backgroundColor: Colors.surfaceSecondary,
-    borderRadius: BorderRadius.lg,
-  },
-  detailIcon: {
-    fontSize: 20,
-    marginBottom: Spacing.xs,
+    padding: 12,
+    borderRadius: 12,
+    marginHorizontal: 4,
   },
   detailLabel: {
-    fontSize: Typography.xs,
+    fontSize: 12,
     color: Colors.textSecondary,
-    marginBottom: Spacing.xs,
+    marginTop: 4,
+    marginBottom: 2,
   },
   detailValue: {
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
+    fontSize: 14,
+    fontWeight: '600',
     color: Colors.textPrimary,
-    textAlign: 'center',
   },
-  driverSection: {
+  
+  // Elegant Ride Details Styles
+  elegantRideDetailsCard: {
+    backgroundColor: '#FFFFFF',
+    marginBottom: 20,
+    borderRadius: 16,
+    padding: 24,
+    ...Shadows.md,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 59, 115, 0.08)',
+  },
+  elegantCardHeader: {
+    marginBottom: 20,
+  },
+  elegantCardTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 12,
+    letterSpacing: 0.3,
+  },
+  elegantDivider: {
+    height: 2,
+    backgroundColor: 'rgba(0, 59, 115, 0.1)',
+    borderRadius: 1,
+    width: 40,
+  },
+  elegantDetailsContainer: {
+    gap: 16,
+  },
+  elegantDetailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  elegantDetailItem: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(0, 59, 115, 0.03)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 59, 115, 0.06)',
+  },
+  elegantIconWrapper: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0, 59, 115, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  elegantDetailText: {
+    flex: 1,
+  },
+  elegantDetailLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 2,
+    fontWeight: '500',
+    letterSpacing: 0.3,
+  },
+  elegantDetailValue: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    letterSpacing: 0.2,
+  },
+  
+  // Driver Card
+  driverCard: {
+    backgroundColor: Colors.surfaceSecondary,
+    padding: 16,
+    borderRadius: 12,
+  },
+  driverInfo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
   driverAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: Spacing.lg,
+    marginRight: 12,
     ...Shadows.sm,
   },
   driverInitial: {
-    color: Colors.textInverse,
-    fontSize: Typography.xl,
-    fontWeight: Typography.bold,
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
-  driverInfo: {
+  driverDetails: {
     flex: 1,
   },
   driverName: {
-    fontSize: Typography.lg,
-    fontWeight: Typography.semibold,
+    fontSize: 16,
+    fontWeight: '600',
     color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
+    marginBottom: 4,
   },
-  vehicleInfo: {
-    fontSize: Typography.base,
+  vehicleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  vehicleText: {
+    fontSize: 14,
     color: Colors.textSecondary,
-    marginBottom: Spacing.xs,
+    marginLeft: 6,
   },
   vehicleColor: {
-    fontSize: Typography.sm,
+    fontSize: 12,
     color: Colors.textTertiary,
+    marginTop: 2,
+  },
+  ratingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
   },
   ratingContainer: {
-    backgroundColor: Colors.accent,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
   },
   ratingText: {
-    color: Colors.textInverse,
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
+    color: '#D97706',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 2,
   },
-  passengerSection: {
+  
+  // Passenger Card
+  passengerCard: {
+    backgroundColor: Colors.surfaceSecondary,
+    padding: 16,
+    borderRadius: 12,
+  },
+  passengerInfo: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   passengerAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: Colors.secondary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: Spacing.lg,
+    marginRight: 12,
     ...Shadows.sm,
   },
   passengerInitial: {
-    color: Colors.textInverse,
-    fontSize: Typography.xl,
-    fontWeight: Typography.bold,
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
-  passengerInfo: {
+  passengerDetails: {
     flex: 1,
   },
   passengerName: {
-    fontSize: Typography.lg,
-    fontWeight: Typography.semibold,
+    fontSize: 16,
+    fontWeight: '600',
     color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
+    marginBottom: 4,
   },
-  passengerDetails: {
-    fontSize: Typography.sm,
+  passengerDetail: {
+    fontSize: 14,
     color: Colors.textSecondary,
     marginBottom: 2,
   },
+  
+  // Input Styles
+  inputContainer: {
+    backgroundColor: Colors.surfaceSecondary,
+    padding: 16,
+    borderRadius: 12,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  inputHint: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 12,
+  },
+  textInput: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: Colors.textPrimary,
+  },
+  textInputFocused: {
+    borderColor: Colors.primary,
+    borderWidth: 2,
+  },
+  
+  // Summary Card
   summaryCard: {
-    marginBottom: Spacing.lg,
-    borderRadius: BorderRadius['2xl'],
+    borderRadius: 16,
     overflow: 'hidden',
     ...Shadows.lg,
   },
   summaryGradient: {
-    padding: Spacing.lg,
+    padding: 20,
   },
   summaryHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.lg,
-  },
-  summaryIcon: {
-    fontSize: 24,
-    marginRight: Spacing.sm,
+    marginBottom: 16,
   },
   summaryTitle: {
-    fontSize: Typography.lg,
-    fontWeight: Typography.semibold,
-    color: Colors.textInverse,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    marginLeft: 12,
   },
   summaryContent: {
     backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.lg,
+    borderRadius: 12,
+    padding: 16,
   },
   summaryRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: Spacing.sm,
+    marginBottom: 8,
   },
   summaryLabel: {
-    fontSize: Typography.sm,
+    fontSize: 14,
     color: 'rgba(255,255,255,0.8)',
-    fontWeight: Typography.medium,
+    fontWeight: '500',
   },
   summaryValue: {
-    fontSize: Typography.sm,
-    color: Colors.textInverse,
-    fontWeight: Typography.semibold,
+    fontSize: 14,
+    color: '#FFFFFF',
+    fontWeight: '600',
     flex: 1,
     textAlign: 'right',
   },
-  totalPrice: {
-    fontSize: Typography.lg,
-    color: Colors.textInverse,
-    fontWeight: Typography.bold,
-  },
+   totalPrice: {
+     fontSize: 18,
+     color: '#FFFFFF',
+     fontWeight: 'bold',
+   },
+   
+   // Confirm Booking Section
+   confirmBookingSection: {
+     marginTop: 20,
+   },
+   
+   // Book Button
   bookButton: {
-    borderRadius: BorderRadius.lg,
+    borderRadius: 12,
     overflow: 'hidden',
     ...Shadows.lg,
   },
   bookButtonGradient: {
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
     flexDirection: 'row',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bookButtonIcon: {
-    fontSize: 24,
-    marginRight: Spacing.sm,
-  },
   bookButtonText: {
-    color: Colors.textInverse,
-    fontSize: Typography.lg,
-    fontWeight: Typography.bold,
-    textShadowColor: 'rgba(0,0,0,0.1)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 1,
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginLeft: 8,
   },
 }); 

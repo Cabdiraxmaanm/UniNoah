@@ -1,12 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert, StatusBar } from 'react-native';
 import { requestsAPI } from '../services/api';
 import { useApp } from '../utils/AppContext';
 import LoadingSpinner from '../components/LoadingSpinner';
-import Header from '../components/Header';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 
-export default function DriverRequestsScreen({ navigation }) {
+export default function DriverRequestsScreen({ navigation, route }) {
   const [requests, setRequests] = useState([]);
+  const [filteredRequests, setFilteredRequests] = useState([]);
+  const [filter, setFilter] = useState(route?.params?.initialFilter || 'All'); // All | pending | accepted | rejected
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const { user, logout } = useApp();
@@ -15,6 +18,7 @@ export default function DriverRequestsScreen({ navigation }) {
     try {
       const driverRequests = await requestsAPI.getRequests(user.id);
       setRequests(driverRequests);
+      setFilteredRequests(applyFilter(driverRequests, filter));
     } catch (error) {
       console.error('Error loading requests:', error);
     } finally {
@@ -26,6 +30,15 @@ export default function DriverRequestsScreen({ navigation }) {
   useEffect(() => {
     loadRequests();
   }, []);
+
+  useEffect(() => {
+    setFilteredRequests(applyFilter(requests, filter));
+  }, [filter, requests]);
+
+  const applyFilter = (list, status) => {
+    if (status === 'All') return list;
+    return list.filter((r) => r.status === status);
+  };
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -53,13 +66,13 @@ export default function DriverRequestsScreen({ navigation }) {
   const getStatusColor = (status) => {
     switch (status) {
       case 'accepted':
-        return '#2ECC40';
+        return '#10B981';
       case 'pending':
-        return '#F39C12';
+        return '#F59E0B';
       case 'rejected':
-        return '#E74C3C';
+        return '#EF4444';
       default:
-        return '#666';
+        return '#64748B';
     }
   };
 
@@ -109,93 +122,94 @@ export default function DriverRequestsScreen({ navigation }) {
     );
   };
 
-  const handleLogout = async () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Logout', 
-          onPress: async () => {
-            await logout();
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'SignUp' }],
-            });
-          }
-        }
-      ]
-    );
-  };
+  const renderFilterChips = () => (
+    <View style={styles.filtersRow}>
+      {['All', 'pending', 'accepted', 'rejected'].map((label) => {
+        const isActive = filter === label;
+        return (
+          <TouchableOpacity
+            key={label}
+            onPress={() => setFilter(label)}
+            style={[styles.filterChip, isActive && styles.filterChipActive]}
+          >
+            <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+              {label === 'All' ? 'All' : label.charAt(0).toUpperCase() + label.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
 
   const renderRequest = ({ item }) => (
     <View style={styles.requestCard}>
       <View style={styles.requestHeader}>
-        <Text style={styles.routeTitle}>{item.route.from} → {item.route.to}</Text>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
+        <View style={styles.routeRow}>
+          <Ionicons name="location" size={16} color="#003B73" />
+          <Text style={styles.routeTitle}>{item.route.from}</Text>
+          <Ionicons name="arrow-forward" size={16} color="#64748B" style={{ marginHorizontal: 6 }} />
+          <Ionicons name="school" size={16} color="#0074D9" />
+          <Text style={styles.routeTitle}>{item.route.to}</Text>
+        </View>
+        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}> 
           <Text style={styles.statusText}>{getStatusText(item.status)}</Text>
         </View>
       </View>
-      
+
       <View style={styles.requestDetails}>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Student:</Text>
+        <View style={styles.detailRow}> 
+          <Text style={styles.detailLabel}>Student</Text>
           <Text style={styles.detailValue}>{item.passengerName}</Text>
         </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Phone:</Text>
+        <View style={styles.detailRow}> 
+          <Text style={styles.detailLabel}>Phone</Text>
           <Text style={styles.detailValue}>{item.passengerPhone}</Text>
         </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Date:</Text>
+        <View style={styles.detailRow}> 
+          <Text style={styles.detailLabel}>Date</Text>
           <Text style={styles.detailValue}>{formatDate(item.departureTime)}</Text>
         </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Time:</Text>
+        <View style={styles.detailRow}> 
+          <Text style={styles.detailLabel}>Time</Text>
           <Text style={styles.detailValue}>{formatTime(item.departureTime)}</Text>
         </View>
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Price:</Text>
+        <View style={styles.detailRow}> 
+          <Text style={styles.detailLabel}>Price</Text>
           <Text style={styles.price}>${item.price}</Text>
         </View>
         {item.route?.pickupAddress ? (
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Pickup:</Text>
+            <Text style={styles.detailLabel}>Pickup</Text>
             <Text style={styles.detailValue}>{item.route.pickupAddress}</Text>
           </View>
         ) : null}
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>Requested:</Text>
-          <Text style={styles.detailValue}>{formatDate(item.createdAt)}</Text>
-        </View>
       </View>
-      
-      {item.status === 'pending' && (
+
+      {item.status === 'pending' ? (
         <View style={styles.requestActions}>
           <TouchableOpacity
             style={[styles.actionButton, styles.acceptButton]}
             onPress={() => handleAcceptRequest(item.id)}
           >
+            <Ionicons name="checkmark" size={18} color="#FFFFFF" />
             <Text style={styles.actionButtonText}>Accept</Text>
           </TouchableOpacity>
-          
           <TouchableOpacity
             style={[styles.actionButton, styles.rejectButton]}
             onPress={() => handleRejectRequest(item.id)}
           >
+            <Ionicons name="close" size={18} color="#FFFFFF" />
             <Text style={styles.actionButtonText}>Reject</Text>
           </TouchableOpacity>
         </View>
-      )}
-      
-      {item.status === 'accepted' && (
+      ) : (
         <View style={styles.acceptedInfo}>
-          <Text style={styles.acceptedText}>✓ Request accepted</Text>
+          <Text style={styles.acceptedText}>✓ {getStatusText(item.status)}</Text>
           <TouchableOpacity
             style={styles.contactButton}
             onPress={() => Alert.alert('Contact', `Call ${item.passengerName}?`)}
           >
+            <Ionicons name="call" size={16} color="#FFFFFF" />
             <Text style={styles.contactButtonText}>Contact Student</Text>
           </TouchableOpacity>
         </View>
@@ -209,39 +223,26 @@ export default function DriverRequestsScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <Header 
-        title="Ride Requests" 
-        showLogout={true}
-        onLogout={handleLogout}
-      />
-      
-      {/* Navigation Menu */}
-      <View style={styles.navMenu}>
-        <TouchableOpacity 
-          style={styles.navButton} 
-          onPress={() => navigation.navigate('DriverSetAvailability')}
-        >
-          <Text style={styles.navButtonText}>Set Availability</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.navButton, styles.activeNavButton]} 
-          onPress={() => navigation.navigate('DriverRequests')}
-        >
-          <Text style={[styles.navButtonText, styles.activeNavButtonText]}>Requests</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.navButton} 
-          onPress={() => navigation.navigate('DriverBookings')}
-        >
-          <Text style={styles.navButtonText}>Bookings</Text>
-        </TouchableOpacity>
-      </View>
-      
-      {requests.length === 0 ? (
+      <StatusBar barStyle="light-content" backgroundColor="#003B73" />
+      <LinearGradient
+        colors={['#003B73', '#0074D9', '#00BFFF']}
+        style={styles.headerGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Ride Requests</Text>
+          <Text style={styles.headerSubtitle}>Manage and respond to student requests</Text>
+          {renderFilterChips()}
+        </View>
+      </LinearGradient>
+
+      {filteredRequests.length === 0 ? (
         <View style={styles.emptyState}>
-          <Text style={styles.emptyTitle}>No requests yet</Text>
+          <Ionicons name="mail-unread-outline" size={56} color="#003B73" style={{ marginBottom: 12 }} />
+          <Text style={styles.emptyTitle}>{filter === 'All' ? 'No requests yet' : `No ${filter} requests`}</Text>
           <Text style={styles.emptySubtitle}>
-            When students book your rides, their requests will appear here
+            When students send requests for your rides, they will appear here.
           </Text>
           <TouchableOpacity 
             style={styles.createRideButton} 
@@ -252,13 +253,12 @@ export default function DriverRequestsScreen({ navigation }) {
         </View>
       ) : (
         <FlatList
-          data={requests}
+          data={filteredRequests}
           keyExtractor={item => item.id}
           renderItem={renderRequest}
           contentContainerStyle={styles.listContainer}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          showsVerticalScrollIndicator={false}
         />
       )}
     </View>
@@ -268,47 +268,98 @@ export default function DriverRequestsScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#f8faff',
+    backgroundColor: '#F8FAFC',
+  },
+  headerGradient: {
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  headerContent: {
+    width: '100%',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  headerSubtitle: {
+    marginTop: 4,
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  filtersRow: {
+    flexDirection: 'row',
+    marginTop: 14,
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  filterChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
+  filterChipActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  filterChipText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  filterChipTextActive: {
+    color: '#003B73',
   },
   listContainer: {
     padding: 16,
-    paddingBottom: 24,
+    paddingBottom: 120,
   },
   requestCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 18,
-    marginBottom: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
     shadowColor: '#003B73',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
-    shadowRadius: 6,
+    shadowRadius: 12,
     elevation: 2,
   },
   requestHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  routeTitle: { 
-    fontSize: 18, 
-    fontWeight: 'bold', 
-    color: '#003B73',
+  routeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
   },
+  routeTitle: { 
+    fontSize: 16, 
+    fontWeight: '700', 
+    color: '#003B73',
+    marginLeft: 6,
+  },
   statusBadge: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
   statusText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   requestDetails: {
-    marginBottom: 16,
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
   },
   detailRow: {
     flexDirection: 'row',
@@ -316,63 +367,69 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   detailLabel: {
-    fontSize: 14,
-    color: '#666',
-    fontWeight: '500',
+    fontSize: 13,
+    color: '#475569',
+    fontWeight: '600',
   },
   detailValue: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '600',
+    fontSize: 13,
+    color: '#0F172A',
+    fontWeight: '700',
   },
   price: {
     fontSize: 16,
-    color: '#2ECC40',
-    fontWeight: 'bold',
+    color: '#10B981',
+    fontWeight: '800',
   },
   requestActions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
   },
   actionButton: {
     flex: 1,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
   },
   acceptButton: {
-    backgroundColor: '#2ECC40',
+    backgroundColor: '#10B981',
   },
   rejectButton: {
-    backgroundColor: '#E74C3C',
+    backgroundColor: '#EF4444',
   },
   actionButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
   acceptedInfo: {
     alignItems: 'center',
-    paddingTop: 12,
+    paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderTopColor: '#E2E8F0',
+    gap: 10,
   },
   acceptedText: {
-    fontSize: 16,
-    color: '#2ECC40',
-    fontWeight: 'bold',
-    marginBottom: 8,
+    fontSize: 14,
+    color: '#10B981',
+    fontWeight: '800',
   },
   contactButton: {
     backgroundColor: '#0074D9',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   contactButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   emptyState: {
     flex: 1,
@@ -382,45 +439,26 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#003B73',
     marginBottom: 8,
   },
   emptySubtitle: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 14,
+    color: '#475569',
     textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 24,
+    marginBottom: 18,
+    lineHeight: 22,
   },
   createRideButton: {
     backgroundColor: '#0074D9',
-    paddingHorizontal: 24,
+    paddingHorizontal: 20,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 12,
   },
   createRideButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  navMenu: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: 16,
-  },
-  navButton: {
-    padding: 12,
-    borderRadius: 8,
-  },
-  navButtonText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  activeNavButton: {
-    backgroundColor: '#0074D9',
-  },
-  activeNavButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 14,
   },
 }); 

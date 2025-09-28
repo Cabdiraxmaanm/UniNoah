@@ -1,24 +1,32 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert, Dimensions, Animated, StatusBar, ScrollView } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Badge from '../components/Badge';
 import { bookingsAPI } from '../services/api';
 import { useApp } from '../utils/AppContext';
 import LoadingSpinner from '../components/LoadingSpinner';
-import Header from '../components/Header';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, ComponentStyles } from '../styles/DesignSystem';
+import { Ionicons } from '@expo/vector-icons';
+
+const { width, height } = Dimensions.get('window');
 
 export default function StudentRideHistoryScreen({ navigation }) {
   const [bookings, setBookings] = useState([]);
+  const [filteredBookings, setFilteredBookings] = useState([]);
   const [filter, setFilter] = useState('All'); // All | active | pending | completed | cancelled
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const { user, bookings: contextBookings, logout } = useApp();
+  const { user, bookings: contextBookings } = useApp();
+  
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   const loadBookings = async () => {
     try {
       const userBookings = await bookingsAPI.getBookings(user.id, 'student');
       setBookings(userBookings);
+      setFilteredBookings(userBookings);
     } catch (error) {
       console.error('Error loading bookings:', error);
     } finally {
@@ -29,29 +37,51 @@ export default function StudentRideHistoryScreen({ navigation }) {
 
   useEffect(() => {
     loadBookings();
+    
+    // Start animations
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 100,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
   }, []);
+
+  // Filter bookings based on selected filter
+  useEffect(() => {
+    if (filter === 'All') {
+      setFilteredBookings(bookings);
+    } else {
+      setFilteredBookings(bookings.filter(booking => booking.status === filter));
+    }
+  }, [bookings, filter]);
 
   const onRefresh = () => {
     setRefreshing(true);
     loadBookings();
   };
 
-  const handleLogout = async () => {
+  const handleCalendarView = () => {
     Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
+      'Calendar View',
+      'View your ride history in calendar format',
       [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Logout', 
-          onPress: async () => {
-            await logout();
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'SignUp' }],
-            });
-          }
-        }
+        { text: 'This Month', onPress: () => console.log('Show this month') },
+        { text: 'Last Month', onPress: () => console.log('Show last month') },
+        { text: 'All Time', onPress: () => console.log('Show all time') },
+        { text: 'Cancel', style: 'cancel' }
       ]
     );
   };
@@ -119,52 +149,104 @@ export default function StudentRideHistoryScreen({ navigation }) {
     }
   };
 
-  const renderBooking = ({ item }) => (
-    <View style={styles.bookingCard}>
+  const renderBooking = ({ item, index }) => (
+    <Animated.View 
+      style={[
+        styles.bookingCard,
+        {
+          opacity: fadeAnim,
+          transform: [
+            { translateY: slideAnim },
+            { scale: scaleAnim }
+          ],
+        },
+      ]}
+    >
       <LinearGradient
-        colors={['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.98)']}
+        colors={['#FFFFFF', '#F8FAFC']}
         style={styles.cardGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
       >
-        {/* Header */}
-        <View style={styles.bookingHeader}>
-          <View style={styles.routeContainer}>
+        {/* Status Header */}
+        <View style={styles.statusHeader}>
+          <View style={styles.statusInfo}>
+            <View style={[
+              styles.statusIndicator,
+              { backgroundColor: getStatusColor(item.status) }
+            ]} />
+            <Text style={styles.statusText}>{getStatusText(item.status)}</Text>
+          </View>
+          <Text style={styles.bookingDate}>{formatDate(item.createdAt)}</Text>
+        </View>
+
+        {/* Route Section */}
+        <View style={styles.routeSection}>
+          <View style={styles.routeInfo}>
             <View style={styles.routeLine}>
-              <View style={styles.locationDot} />
-              <Text style={styles.routeText}>{item.route.from}</Text>
+              <View style={styles.locationDot}>
+                <Ionicons name="location" size={12} color="#FFFFFF" />
+              </View>
+              <Text style={styles.fromText}>{item.route.from}</Text>
+            </View>
+            <View style={styles.routeDivider}>
+              <View style={styles.dividerLine} />
+              <Ionicons name="arrow-down" size={16} color={Colors.primary} />
+              <View style={styles.dividerLine} />
             </View>
             <View style={styles.routeLine}>
-              <View style={[styles.locationDot, styles.destinationDot]} />
-              <Text style={styles.routeText}>{item.route.to}</Text>
+              <View style={[styles.locationDot, styles.destinationDot]}>
+                <Ionicons name="flag" size={12} color="#FFFFFF" />
+              </View>
+              <Text style={styles.toText}>{item.route.to}</Text>
             </View>
           </View>
-          <Badge label={getStatusText(item.status)} variant={getBadgeVariantForStatus(item.status)} />
+          <View style={styles.priceSection}>
+            <Text style={styles.price}>${item.price}</Text>
+            <Text style={styles.priceLabel}>paid</Text>
+          </View>
         </View>
         
-        {/* Driver Info */}
-        <View style={styles.driverSection}>
+        {/* Driver Card */}
+        <View style={styles.driverCard}>
+          <View style={styles.driverInfo}>
           <View style={styles.driverAvatar}>
             <Text style={styles.driverInitial}>{item.driverName.charAt(0)}</Text>
           </View>
-          <View style={styles.driverInfo}>
+            <View style={styles.driverDetails}>
             <Text style={styles.driverName}>{item.driverName}</Text>
-            <Text style={styles.vehicleInfo}>
-              {item.vehicle?.model} • {item.vehicle?.plate}
-            </Text>
+              <View style={styles.vehicleRow}>
+                <Ionicons name="car" size={14} color={Colors.textSecondary} />
+                <Text style={styles.vehicleText}>{item.vehicle?.model} • {item.vehicle?.plate}</Text>
+              </View>
+            </View>
           </View>
-          <View style={styles.priceContainer}>
-            <Text style={styles.price}>${item.price}</Text>
+          <View style={styles.departureInfo}>
+            <Text style={styles.departureLabel}>Departure</Text>
+            <Text style={styles.departureTime}>{formatTime(item.departureTime)}</Text>
           </View>
         </View>
         
-        {/* Trip Details */}
-        <View style={styles.tripDetails}>
-          <View style={styles.detailItem}><Text style={styles.detailText}>Date: {formatDate(item.departureTime)}</Text></View>
-          <View style={styles.detailItem}><Text style={styles.detailText}>Time: {formatTime(item.departureTime)}</Text></View>
-          <View style={styles.detailItem}><Text style={styles.detailText}>Requested: {formatDate(item.createdAt)}</Text></View>
+        {/* Trip Details Grid */}
+        <View style={styles.detailsGrid}>
+          <View style={styles.detailCard}>
+            <Ionicons name="calendar" size={20} color={Colors.primary} />
+            <Text style={styles.detailLabel}>Date</Text>
+            <Text style={styles.detailValue}>{formatDate(item.departureTime)}</Text>
+          </View>
+          <View style={styles.detailCard}>
+            <Ionicons name="time" size={20} color={Colors.primary} />
+            <Text style={styles.detailLabel}>Time</Text>
+            <Text style={styles.detailValue}>{formatTime(item.departureTime)}</Text>
+          </View>
+          <View style={styles.detailCard}>
+            <Ionicons name="person" size={20} color={Colors.primary} />
+            <Text style={styles.detailLabel}>Driver</Text>
+            <Text style={styles.detailValue}>{item.driverName.split(' ')[0]}</Text>
+          </View>
         </View>
         
-        {/* Actions */}
-        <View style={styles.bookingActions}>
+        {/* Action Button */}
           {item.status === 'active' && (
             <TouchableOpacity
               style={styles.actionButton}
@@ -176,7 +258,7 @@ export default function StudentRideHistoryScreen({ navigation }) {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                  
+              <Ionicons name="navigate" size={20} color="#FFFFFF" />
                 <Text style={styles.actionButtonText}>Track Ride</Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -185,7 +267,7 @@ export default function StudentRideHistoryScreen({ navigation }) {
           {item.status === 'completed' && (
             <TouchableOpacity
               style={styles.actionButton}
-              onPress={() => navigation.navigate('StudentRateDriver', { booking: item })}
+              onPress={() => navigation.navigate('StudentRateExperience', { booking: item })}
             >
               <LinearGradient
                 colors={Colors.gradients.secondary}
@@ -193,7 +275,7 @@ export default function StudentRideHistoryScreen({ navigation }) {
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                  
+              <Ionicons name="star" size={20} color="#FFFFFF" />
                 <Text style={styles.actionButtonText}>Rate Driver</Text>
               </LinearGradient>
             </TouchableOpacity>
@@ -205,19 +287,18 @@ export default function StudentRideHistoryScreen({ navigation }) {
               onPress={() => handleCancelBooking(item.id)}
             >
               <LinearGradient
-                colors={Colors.gradients.accent}
+              colors={['#EF4444', '#DC2626']}
                 style={styles.actionButtonGradient}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
               >
-                  
-                <Text style={styles.actionButtonText}>Cancel</Text>
+              <Ionicons name="close-circle" size={20} color="#FFFFFF" />
+              <Text style={styles.actionButtonText}>Cancel Ride</Text>
               </LinearGradient>
             </TouchableOpacity>
           )}
-        </View>
       </LinearGradient>
-    </View>
+    </Animated.View>
   );
 
   const handleCancelBooking = async (bookingId) => {
@@ -235,48 +316,97 @@ export default function StudentRideHistoryScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <Header 
-        title="Ride History" 
-        showLogout={true}
-        onLogout={handleLogout}
-      />
-      {/* Status Filter */}
-      <View style={styles.filterBar}>
-        {['All', 'active', 'pending', 'completed', 'cancelled'].map((key) => (
+      <StatusBar barStyle="light-content" backgroundColor="#003B73" />
+      
+      {/* Header Section */}
+      <LinearGradient
+        colors={['#003B73', '#0074D9', '#00BFFF']}
+        style={styles.headerGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerContent}>
+          <View style={styles.headerTop}>
+            <TouchableOpacity 
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Ride History</Text>
           <TouchableOpacity
-            key={key}
-            onPress={() => setFilter(key)}
-            style={[styles.filterChip, filter === key && styles.filterChipActive]}
+              style={styles.calendarButton}
+              onPress={() => Alert.alert('Calendar', 'Calendar view coming soon!')}
+            >
+              <Ionicons name="calendar-outline" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+          
+          {/* Filter Chips */}
+          <Animated.View 
+            style={[
+              styles.filterContainer,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
           >
-            <Text style={[styles.filterText, filter === key && styles.filterTextActive]}>
-              {key === 'All' ? 'All' : key.charAt(0).toUpperCase() + key.slice(1)}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {[
+                { key: 'All', label: 'All Rides', icon: 'grid' },
+                { key: 'active', label: 'Active', icon: 'play-circle' },
+                { key: 'pending', label: 'Pending', icon: 'time' },
+              ].map((filterOption) => (
+                <TouchableOpacity
+                  key={filterOption.key}
+                  style={[
+                    styles.filterChip,
+                    filter === filterOption.key && styles.filterChipActive
+                  ]}
+                  onPress={() => setFilter(filterOption.key)}
+                >
+                  <Ionicons 
+                    name={filterOption.icon} 
+                    size={16} 
+                    color={filter === filterOption.key ? '#FFFFFF' : Colors.primary} 
+                  />
+                  <Text style={[
+                    styles.filterChipText,
+                    filter === filterOption.key && styles.filterChipTextActive
+                  ]}>
+                    {filterOption.label}
             </Text>
           </TouchableOpacity>
         ))}
+            </ScrollView>
+          </Animated.View>
       </View>
+      </LinearGradient>
       
-      {/* Navigation Menu */}
-      <View style={styles.navMenu}>
-        <TouchableOpacity 
-          style={styles.navButton} 
-          onPress={() => navigation.navigate('StudentSearchRides')}
-        >
-          <Text style={styles.navButtonText}>Search Rides</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.navButton, styles.activeNavButton]} 
-          onPress={() => navigation.navigate('StudentRideHistory')}
-        >
-          <Text style={[styles.navButtonText, styles.activeNavButtonText]}>Ride History</Text>
-        </TouchableOpacity>
+      {/* Content */}
+      <View style={styles.content}>
+        {filteredBookings.length === 0 ? (
+          <Animated.View 
+            style={[
+              styles.emptyState,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <View style={styles.emptyIconContainer}>
+              <Ionicons name="receipt-outline" size={64} color={Colors.primary} />
       </View>
-      
-      {(filter !== 'All' ? bookings.filter(b => b.status === filter) : bookings).length === 0 ? (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>📋</View>
-          <Text style={styles.emptyTitle}>No ride history</Text>
+            <Text style={styles.emptyTitle}>
+              {filter === 'All' ? 'No ride history' : `No ${filter} rides`}
+            </Text>
           <Text style={styles.emptySubtitle}>
-            You haven't booked any rides yet. Start by searching for available rides!
+              {filter === 'All' 
+                ? 'You haven\'t booked any rides yet. Start by searching for available rides!'
+                : `You don't have any ${filter} rides at the moment.`
+              }
           </Text>
           <TouchableOpacity 
             style={styles.searchButton} 
@@ -288,13 +418,14 @@ export default function StudentRideHistoryScreen({ navigation }) {
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
+                <Ionicons name="search" size={20} color="#FFFFFF" />
               <Text style={styles.searchButtonText}>Search Rides</Text>
             </LinearGradient>
           </TouchableOpacity>
-        </View>
+          </Animated.View>
       ) : (
         <FlatList
-          data={filter === 'All' ? bookings : bookings.filter(b => b.status === filter)}
+            data={filteredBookings}
           keyExtractor={item => item.id}
           renderItem={renderBooking}
           contentContainerStyle={styles.listContainer}
@@ -304,6 +435,7 @@ export default function StudentRideHistoryScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         />
       )}
+      </View>
     </View>
   );
 }
@@ -313,251 +445,341 @@ const styles = StyleSheet.create({
     flex: 1, 
     backgroundColor: Colors.background,
   },
-  navMenu: {
-    flexDirection: 'row',
-    backgroundColor: Colors.surface,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray200,
-    ...Shadows.sm,
+  
+  // Header Styles
+  headerGradient: {
+    paddingTop: 50,
+    paddingBottom: 20,
   },
-  navButton: {
-    flex: 1,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    marginHorizontal: Spacing.xs,
-    borderRadius: BorderRadius.lg,
+  headerContent: {
+    paddingHorizontal: 20,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  activeNavButton: {
-    backgroundColor: Colors.primary,
-    ...Shadows.sm,
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
-  navButtonText: {
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
-    color: Colors.textSecondary,
+  logoutButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  activeNavButtonText: {
-    color: Colors.textInverse,
+  
+  // Filter Styles
+  filterContainer: {
+    marginBottom: 8,
+  },
+  filterChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginRight: 12,
+  },
+  filterChipActive: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  filterChipText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
+  
+  // Content Styles
+  content: {
+    flex: 1,
+    backgroundColor: Colors.background,
   },
   listContainer: {
-    padding: Spacing.lg,
-    paddingBottom: Spacing['2xl'],
+    padding: 20,
+    paddingBottom: 150, // Adjusted for floating navigation bar
   },
+  
+  // Booking Card Styles
   bookingCard: {
-    marginBottom: Spacing.lg,
-    borderRadius: BorderRadius['2xl'],
+    marginBottom: 20,
+    borderRadius: 16,
     overflow: 'hidden',
     ...Shadows.lg,
   },
   cardGradient: {
-    padding: Spacing.lg,
+    padding: 20,
   },
-  bookingHeader: {
+  
+  // Status Header
+  statusHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  statusInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+  },
+  statusText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  bookingDate: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  
+  // Route Section
+  routeSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: Spacing.lg,
+    marginBottom: 16,
   },
-  routeContainer: {
+  routeInfo: {
     flex: 1,
-    marginRight: Spacing.lg,
+    marginRight: 16,
   },
   routeLine: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
+    marginBottom: 8,
   },
   locationDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     backgroundColor: Colors.primary,
-    marginRight: Spacing.md,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    ...Shadows.sm,
   },
   destinationDot: {
     backgroundColor: Colors.secondary,
   },
-  routeText: {
-    fontSize: Typography.lg,
-    fontWeight: Typography.semibold,
+  fromText: {
+    fontSize: 16,
+    fontWeight: '600',
     color: Colors.textPrimary,
     flex: 1,
   },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
-    ...Shadows.sm,
-  },
-  statusIcon: {
-    fontSize: 12,
-    marginRight: Spacing.xs,
-  },
-  statusText: {
-    color: Colors.textInverse,
-    fontSize: Typography.xs,
-    fontWeight: Typography.bold,
-  },
-  driverSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    backgroundColor: Colors.surfaceSecondary,
-    borderRadius: BorderRadius.lg,
-  },
-  driverAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: Spacing.md,
-    ...Shadows.sm,
-  },
-  driverInitial: {
-    color: Colors.textInverse,
-    fontSize: Typography.lg,
-    fontWeight: Typography.bold,
-  },
-  driverInfo: {
+  toText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
     flex: 1,
   },
-  driverName: {
-    fontSize: Typography.lg,
-    fontWeight: Typography.semibold,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
+  routeDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 4,
   },
-  vehicleInfo: {
-    fontSize: Typography.sm,
-    color: Colors.textSecondary,
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: Colors.gray300,
   },
-  priceContainer: {
+  priceSection: {
     alignItems: 'flex-end',
   },
   price: {
-    fontSize: Typography.xl,
-    fontWeight: Typography.bold,
+    fontSize: 24,
+    fontWeight: 'bold',
     color: Colors.success,
   },
-  tripDetails: {
+  priceLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  
+  // Driver Card
+  driverCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: Spacing.lg,
-    paddingHorizontal: Spacing.sm,
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceSecondary,
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
   },
-  detailItem: {
-    alignItems: 'flex-start',
+  driverInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
     flex: 1,
   },
-  detailText: {
-    fontSize: Typography.xs,
-    color: Colors.textSecondary,
-    textAlign: 'left',
-  },
-  filterBar: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.sm,
-    backgroundColor: Colors.surface,
-  },
-  filterChip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.gray200,
-    backgroundColor: Colors.surface,
-  },
-  filterChipActive: {
+  driverAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    ...Shadows.sm,
   },
-  filterText: {
-    fontSize: Typography.xs,
-    color: Colors.textSecondary,
-    fontWeight: Typography.medium,
+  driverInitial: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
-  filterTextActive: {
-    color: Colors.textInverse,
-    fontWeight: Typography.semibold,
+  driverDetails: {
+    flex: 1,
   },
-  bookingActions: {
+  driverName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  vehicleRow: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
+  vehicleText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    marginLeft: 6,
+  },
+  departureInfo: {
+    alignItems: 'flex-end',
+  },
+  departureLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginBottom: 2,
+  },
+  departureTime: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  
+  // Details Grid
+  detailsGrid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  detailCard: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: Colors.surfaceSecondary,
+    padding: 12,
+    borderRadius: 12,
+    marginHorizontal: 4,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 4,
+    marginBottom: 2,
+  },
+  detailValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+  },
+  
+  // Action Buttons
   actionButton: {
-    borderRadius: BorderRadius.lg,
+    borderRadius: 12,
+    overflow: 'hidden',
+    ...Shadows.md,
+  },
+  cancelButton: {
+    borderRadius: 12,
     overflow: 'hidden',
     ...Shadows.md,
   },
   actionButtonGradient: {
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
     flexDirection: 'row',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  actionButtonIcon: {
-    fontSize: 16,
-    marginRight: Spacing.xs,
-  },
   actionButtonText: {
-    color: Colors.textInverse,
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginLeft: 8,
   },
-  cancelButton: {
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
-    ...Shadows.md,
-  },
+  
+  // Empty State
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: Spacing['2xl'],
+    padding: 40,
   },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: Spacing.lg,
+  emptyIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: Colors.surfaceSecondary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
   },
   emptyTitle: {
-    fontSize: Typography.xl,
-    fontWeight: Typography.bold,
+    fontSize: 20,
+    fontWeight: 'bold',
     color: Colors.textPrimary,
-    marginBottom: Spacing.sm,
+    marginBottom: 8,
     textAlign: 'center',
   },
   emptySubtitle: {
-    fontSize: Typography.lg,
+    fontSize: 16,
     color: Colors.textSecondary,
     textAlign: 'center',
-    marginBottom: Spacing['2xl'],
-    lineHeight: Typography.lineHeight.normal,
+    marginBottom: 32,
+    lineHeight: 24,
   },
   searchButton: {
-    borderRadius: BorderRadius.lg,
+    borderRadius: 12,
     overflow: 'hidden',
     ...Shadows.md,
   },
   searchButtonGradient: {
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
+    flexDirection: 'row',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
   searchButtonText: {
-    color: Colors.textInverse,
-    fontWeight: Typography.bold,
-    fontSize: Typography.lg,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 16,
+    marginLeft: 8,
   },
 }); 

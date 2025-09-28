@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Initial state
 const initialState = {
   user: null,
-  userType: null, // 'student' or 'driver'
+  userType: null, // 'student', 'driver', or 'admin'
   rides: [],
   bookings: [],
   requests: [],
@@ -113,6 +113,7 @@ export function AppProvider({ children }) {
         dispatch({ type: ACTIONS.SET_USER_TYPE, payload: parsedData.userType });
         dispatch({ type: ACTIONS.SET_AUTHENTICATED, payload: true });
       }
+      
     } catch (error) {
       console.error('Error loading user data:', error);
     }
@@ -142,10 +143,21 @@ export function AppProvider({ children }) {
 
   const logout = async () => {
     try {
+      console.log('Starting logout process...');
+      
+      // Clear user data from storage
       await AsyncStorage.removeItem('userData');
+      
+      // Clear any cached data
+      await AsyncStorage.removeItem('studentSettings');
+      
+      // Reset app state
       dispatch({ type: ACTIONS.LOGOUT });
+      
+      console.log('Logout completed successfully');
     } catch (error) {
       console.error('Error during logout:', error);
+      throw error; // Re-throw so the UI can handle it
     }
   };
 
@@ -176,6 +188,7 @@ export function AppProvider({ children }) {
   const addNotification = (notification) => {
     dispatch({ type: ACTIONS.ADD_NOTIFICATION, payload: notification });
   };
+
 
   const value = {
     ...state,

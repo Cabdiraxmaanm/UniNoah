@@ -1,13 +1,48 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated } from 'react-native';
-import Header from '../components/Header';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Animated, Dimensions, StatusBar, Alert } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius, Shadows } from '../styles/DesignSystem';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useApp } from '../utils/AppContext';
+import { bookingsAPI } from '../services/api';
+
+const { width, height } = Dimensions.get('window');
 
 export default function DriverHomeScreen({ navigation }) {
+  const { user } = useApp();
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(50)).current;
+  const slideUpAnim = useRef(new Animated.Value(30)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  
+  // Dynamic greeting based on time
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  };
+
+  const handleQuickNavigation = async () => {
+    navigation.navigate('DriverMap');
+  };
+
+  // Calculate driver stats
+  const getDriverStats = () => {
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth();
+    const currentYear = currentDate.getFullYear();
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const currentDay = currentDate.getDate();
+    
+    // Mock data - in real app this would come from API
+    const totalRides = 42; // Total rides given
+    const rating = 4.9; // Driver rating
+    const activeDays = Math.floor(currentDay * 0.8); // Active days this month
+    
+    return { totalRides, rating, activeDays, daysInMonth };
+  };
+  
+  const stats = getDriverStats();
 
   useEffect(() => {
     Animated.parallel([
@@ -16,156 +51,222 @@ export default function DriverHomeScreen({ navigation }) {
         duration: 800,
         useNativeDriver: true,
       }),
-      Animated.timing(slideAnim, {
+      Animated.timing(slideUpAnim, {
         toValue: 0,
         duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 100,
+        friction: 8,
         useNativeDriver: true,
       }),
     ]).start();
   }, []);
 
+  const firstName = user?.name?.split(' ')[0] || 'Driver';
+
   return (
     <View style={styles.container}>
-      <Header title="Driver Home" />
+      <StatusBar barStyle="light-content" backgroundColor="#003B73" />
+      
+      {/* Header Section */}
+      <LinearGradient
+        colors={['#003B73', '#0074D9', '#00BFFF']}
+        style={styles.headerGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerContent}>
+          <View style={styles.headerTop}>
+            <View>
+              <Text style={styles.greeting}>{getGreeting()}</Text>
+              <Text style={styles.userName}>{firstName}</Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.profileButton}
+              onPress={() => navigation.navigate('DriverSettings')}
+            >
+              <View style={styles.profileIcon}>
+                <Ionicons name="settings" size={24} color={Colors.primary} />
+              </View>
+            </TouchableOpacity>
+          </View>
+          
+          {/* Enhanced Stats Row */}
+          <View style={styles.statsRow}>
+            <View style={styles.miniStat}>
+              <Text style={styles.miniStatNumber}>{stats.totalRides}</Text>
+              <Text style={styles.miniStatLabel}>Rides Given</Text>
+            </View>
+            <View style={styles.miniStat}>
+              <Text style={styles.miniStatNumber}>{stats.rating}★</Text>
+              <Text style={styles.miniStatLabel}>Rating</Text>
+            </View>
+            <View style={styles.miniStat}>
+              <Text style={styles.miniStatNumber}>{stats.activeDays}/{stats.daysInMonth}</Text>
+              <Text style={styles.miniStatLabel}>Active Days</Text>
+            </View>
+          </View>
+        </View>
+      </LinearGradient>
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollView} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
         <Animated.View 
           style={[
             styles.content,
             {
               opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
+              transform: [
+                { translateY: slideUpAnim },
+                { scale: scaleAnim }
+              ],
             },
           ]}
         >
-          <View style={styles.welcomeSection}>
-        <Text style={styles.welcome}>Welcome, Driver</Text>
-            <Text style={styles.subtitle}>Manage your rides and passengers</Text>
+          {/* Main Action Cards */}
+          <View style={styles.mainCards}>
+            <TouchableOpacity 
+              style={styles.primaryCard}
+              onPress={() => navigation.navigate('DriverSetAvailability')}
+              activeOpacity={0.95}
+            >
+              <LinearGradient
+                colors={Colors.gradients.primary}
+                style={styles.primaryCardGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <View style={styles.primaryCardContent}>
+                  <View style={styles.primaryCardLeft}>
+                    <Ionicons name="calendar-circle" size={48} color="#FFFFFF" />
+                    <View style={styles.primaryCardText}>
+                      <Text style={styles.primaryCardTitle}>Set Availability</Text>
+                      <Text style={styles.primaryCardSubtitle}>Create rides and manage schedule</Text>
+                    </View>
+                  </View>
+                  <Ionicons name="arrow-forward-circle" size={32} color="rgba(255,255,255,0.8)" />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <View style={styles.secondaryCards}>
+              <TouchableOpacity 
+                style={styles.secondaryCard}
+                onPress={() => navigation.navigate('DriverRequests')}
+                activeOpacity={0.95}
+              >
+                <View style={styles.secondaryCardContent}>
+                  <View style={styles.secondaryIconContainer}>
+                    <Ionicons name="mail-outline" size={28} color={Colors.primary} />
+                  </View>
+                  <Text style={styles.secondaryCardTitle}>Requests</Text>
+                  <Text style={styles.secondaryCardSubtitle}>Review requests</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={styles.secondaryCard}
+                onPress={() => navigation.navigate('DriverBookings')}
+                activeOpacity={0.95}
+              >
+                <View style={styles.secondaryCardContent}>
+                  <View style={styles.secondaryIconContainer}>
+                    <Ionicons name="list-outline" size={28} color={Colors.primary} />
+                  </View>
+                  <Text style={styles.secondaryCardTitle}>Bookings</Text>
+                  <Text style={styles.secondaryCardSubtitle}>Manage bookings</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
 
-          <View style={styles.statsContainer}>
-            <Animated.View 
-              style={[
-                styles.statCard,
-                {
-                  opacity: fadeAnim,
-                  transform: [{ 
-                    translateY: slideAnim.interpolate({
-                      inputRange: [0, 50],
-                      outputRange: [0, 20],
-                    })
-                  }],
-                },
-              ]}
-            >
-              <Ionicons name="car-outline" size={24} color={Colors.primary} />
-              <Text style={styles.statNumber}>8</Text>
-              <Text style={styles.statLabel}>Rides Given</Text>
-            </Animated.View>
-            <Animated.View 
-              style={[
-                styles.statCard,
-                {
-                  opacity: fadeAnim,
-                  transform: [{ 
-                    translateY: slideAnim.interpolate({
-                      inputRange: [0, 50],
-                      outputRange: [0, 30],
-                    })
-                  }],
-                },
-              ]}
-            >
-              <Ionicons name="people-outline" size={24} color={Colors.primary} />
-              <Text style={styles.statNumber}>24</Text>
-              <Text style={styles.statLabel}>Passengers</Text>
-            </Animated.View>
-            <Animated.View 
-              style={[
-                styles.statCard,
-                {
-                  opacity: fadeAnim,
-                  transform: [{ 
-                    translateY: slideAnim.interpolate({
-                      inputRange: [0, 50],
-                      outputRange: [0, 40],
-                    })
-                  }],
-                },
-              ]}
-            >
-              <Ionicons name="star-outline" size={24} color={Colors.primary} />
-              <Text style={styles.statNumber}>4.9</Text>
-              <Text style={styles.statLabel}>Rating</Text>
-            </Animated.View>
-          </View>
 
-        <View style={styles.grid}>
-            <Animated.View
-              style={{
-                opacity: fadeAnim,
-                transform: [{ 
-                  translateY: slideAnim.interpolate({
-                    inputRange: [0, 50],
-                    outputRange: [0, 50],
-                  })
-                }],
-              }}
-            >
-          <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('DriverSetAvailability')}>
-            <LinearGradient colors={Colors.gradients.primary} style={styles.cardGradient}>
-                  <View style={styles.cardIconContainer}>
-                    <Ionicons name="calendar-outline" size={32} color={Colors.textInverse} />
-                  </View>
-              <Text style={styles.cardTitle}>Set Availability</Text>
-              <Text style={styles.cardText}>Create a ride with route and time</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-            </Animated.View>
+          {/* Quick Actions */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Quick Access</Text>
+            
+            {/* Primary Quick Actions */}
+            <View style={styles.primaryQuickActions}>
+              <TouchableOpacity 
+                style={styles.primaryQuickAction}
+                onPress={handleQuickNavigation}
+              >
+                <LinearGradient
+                  colors={[Colors.primaryLight, Colors.primary]}
+                  style={styles.primaryQuickActionGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <Ionicons name="navigate" size={24} color="#FFFFFF" />
+                  <Text style={styles.primaryQuickActionText}>Navigation</Text>
+                  <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.8)" />
+                </LinearGradient>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.primaryQuickAction}
+                onPress={() => navigation.navigate('DriverSupport')}
+              >
+                <LinearGradient
+                  colors={[Colors.accent, Colors.accentDark]}
+                  style={styles.primaryQuickActionGradient}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                >
+                  <Ionicons name="headset" size={24} color="#FFFFFF" />
+                  <Text style={styles.primaryQuickActionText}>Get Support</Text>
+                  <Ionicons name="chevron-forward" size={20} color="rgba(255,255,255,0.8)" />
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
 
-            <Animated.View
-              style={{
-                opacity: fadeAnim,
-                transform: [{ 
-                  translateY: slideAnim.interpolate({
-                    inputRange: [0, 50],
-                    outputRange: [0, 60],
-                  })
-                }],
-              }}
-            >
-          <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('DriverRequests')}>
-            <LinearGradient colors={Colors.gradients.accent} style={styles.cardGradient}>
-                  <View style={styles.cardIconContainer}>
-                    <Ionicons name="mail-unread-outline" size={32} color={Colors.textInverse} />
+            {/* Secondary Quick Actions */}
+            <View style={styles.secondaryQuickActions}>
+              <TouchableOpacity 
+                style={styles.secondaryQuickAction}
+                onPress={() => navigation.navigate('DriverEarnings')}
+              >
+                <View style={styles.secondaryQuickActionContent}>
+                  <View style={styles.secondaryQuickActionIcon}>
+                    <Ionicons name="analytics" size={22} color={Colors.accent} />
                   </View>
-              <Text style={styles.cardTitle}>Requests</Text>
-              <Text style={styles.cardText}>Review and accept student requests</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-            </Animated.View>
-
-            <Animated.View
-              style={{
-                opacity: fadeAnim,
-                transform: [{ 
-                  translateY: slideAnim.interpolate({
-                    inputRange: [0, 50],
-                    outputRange: [0, 70],
-                  })
-                }],
-              }}
-            >
-          <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('DriverBookings')}>
-            <LinearGradient colors={Colors.gradients.secondary} style={styles.cardGradient}>
-                  <View style={styles.cardIconContainer}>
-                    <Ionicons name="list-outline" size={32} color={Colors.textInverse} />
+                  <View style={styles.secondaryQuickActionText}>
+                    <Text style={styles.secondaryQuickActionTitle}>Earnings</Text>
+                    <Text style={styles.secondaryQuickActionSubtitle}>View your income</Text>
                   </View>
-              <Text style={styles.cardTitle}>Bookings</Text>
-              <Text style={styles.cardText}>Manage your current bookings</Text>
-            </LinearGradient>
+                </View>
           </TouchableOpacity>
-            </Animated.View>
+              
+              <TouchableOpacity style={styles.secondaryQuickAction} onPress={() => navigation.navigate('DriverSettings')}>
+                <View style={styles.secondaryQuickActionContent}>
+                  <View style={styles.secondaryQuickActionIcon}>
+                    <Ionicons name="settings" size={22} color={Colors.primary} />
+                  </View>
+                  <View style={styles.secondaryQuickActionText}>
+                    <Text style={styles.secondaryQuickActionTitle}>Preferences</Text>
+                    <Text style={styles.secondaryQuickActionSubtitle}>Customize app</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={styles.secondaryQuickAction} onPress={() => navigation.navigate('DriverSupport')}>
+                <View style={styles.secondaryQuickActionContent}>
+                  <View style={styles.secondaryQuickActionIcon}>
+                    <Ionicons name="shield-checkmark" size={22} color={Colors.success} />
+                  </View>
+                  <View style={styles.secondaryQuickActionText}>
+                    <Text style={styles.secondaryQuickActionTitle}>Safety</Text>
+                    <Text style={styles.secondaryQuickActionSubtitle}>Emergency contacts</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            </View>
         </View>
         </Animated.View>
       </ScrollView>
@@ -176,109 +277,237 @@ export default function DriverHomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: Colors.background 
+    backgroundColor: Colors.background,
   },
-  scrollView: { 
-    flex: 1 
+  
+  // Header Styles
+  headerGradient: {
+    paddingTop: 50,
+    paddingBottom: 24,
+    paddingHorizontal: 20,
   },
-  content: { 
-    padding: Spacing.lg,
-    paddingBottom: Spacing['2xl'],
+  headerContent: {
+    
   },
-  welcomeSection: {
-    marginBottom: Spacing['2xl'],
-    alignItems: 'center',
-  },
-  welcome: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: Colors.primary,
-    marginBottom: 16,
-    textAlign: 'center',
-    textShadowColor: 'rgba(30, 58, 138, 0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-    lineHeight: 36,
-  },
-  subtitle: { 
-    color: Colors.textSecondary, 
-    fontSize: 18,
-    fontWeight: '500',
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  statsContainer: {
+  headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: Spacing['2xl'],
-    paddingHorizontal: Spacing.sm,
+    alignItems: 'center',
+    marginBottom: 20,
   },
-  statCard: {
+  greeting: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  userName: {
+    fontSize: 28,
+    color: '#FFFFFF',
+    fontWeight: '800',
+  },
+  profileButton: {
+    
+  },
+  profileIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...Shadows.md,
+  },
+  
+  // Mini Stats
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+  },
+  miniStat: {
+    alignItems: 'center',
+  },
+  miniStatNumber: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  miniStatLabel: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.8)',
+    fontWeight: '600',
+  },
+
+  // Content Styles
+  scrollView: { 
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 150,
+  },
+  content: { 
+    padding: 20,
+    marginTop: -12,
+  },
+
+  // Main Cards
+  mainCards: {
+    marginBottom: 24,
+  },
+  primaryCard: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginBottom: 16,
+    ...Shadows.xl,
+  },
+  primaryCardGradient: {
+    padding: 24,
+  },
+  primaryCardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  primaryCardLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  primaryCardText: {
+    marginLeft: 16,
+    flex: 1,
+  },
+  primaryCardTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 4,
+  },
+  primaryCardSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.85)',
+    fontWeight: '500',
+  },
+
+  // Secondary Cards
+  secondaryCards: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  secondaryCard: {
     flex: 1,
     backgroundColor: Colors.surface,
     borderRadius: 16,
     padding: 20,
     alignItems: 'center',
-    marginHorizontal: 4,
     ...Shadows.lg,
     borderWidth: 1,
-    borderColor: Colors.gray100,
-    height: 100,
+    borderColor: `${Colors.primary}15`,
   },
-  statNumber: {
-    fontSize: 24,
+  secondaryCardContent: {
+    alignItems: 'center',
+  },
+  secondaryIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: `${Colors.primary}15`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  secondaryCardTitle: {
+    fontSize: 16,
     fontWeight: '700',
     color: Colors.primary,
-    marginTop: 8,
-    lineHeight: 28,
+    marginBottom: 4,
+    textAlign: 'center',
   },
-  statLabel: {
+  secondaryCardSubtitle: {
     fontSize: 12,
     color: Colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 4,
     fontWeight: '500',
-    lineHeight: 16,
+    textAlign: 'center',
   },
-  grid: { 
-    gap: Spacing.xl 
+
+  // Section Styles
+  section: {
+    marginBottom: 24,
   },
-  card: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    ...Shadows.xl,
-    marginHorizontal: 8,
-    height: 180,
-  },
-  cardGradient: { 
-    padding: 32,
-    alignItems: 'center',
-    height: 180,
-    justifyContent: 'center',
-  },
-  cardIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-    ...Shadows.md,
-  },
-  cardTitle: {
-    color: Colors.textInverse,
-    fontSize: 20,
+  sectionTitle: {
+    fontSize: 18,
     fontWeight: '700',
-    marginBottom: 8,
-    textAlign: 'center',
-    lineHeight: 24,
+    color: Colors.primary,
+    marginBottom: 16,
   },
-  cardText: { 
-    color: 'rgba(255,255,255,0.9)',
-    textAlign: 'center',
-    fontSize: 14,
-    lineHeight: 18,
+
+
+  // Quick Actions
+  primaryQuickActions: {
+    marginBottom: 16,
+    gap: 12,
+  },
+  primaryQuickAction: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    ...Shadows.lg,
+  },
+  primaryQuickActionGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 20,
+    paddingVertical: 18,
+  },
+  primaryQuickActionText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    flex: 1,
+    marginLeft: 16,
+  },
+
+  secondaryQuickActions: {
+    gap: 12,
+  },
+  secondaryQuickAction: {
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    padding: 16,
+    ...Shadows.sm,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}10`,
+  },
+  secondaryQuickActionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  secondaryQuickActionIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: `${Colors.primary}12`,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+  },
+  secondaryQuickActionText: {
+    flex: 1,
+  },
+  secondaryQuickActionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textPrimary,
+    marginBottom: 2,
+  },
+  secondaryQuickActionSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondary,
     fontWeight: '500',
   },
 });

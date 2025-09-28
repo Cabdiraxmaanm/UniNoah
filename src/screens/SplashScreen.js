@@ -32,6 +32,8 @@ export default function SplashScreen({ navigation }) {
           navigation.replace('StudentPanel');
         } else if (userType === 'driver') {
           navigation.replace('DriverPanel');
+        } else if (userType === 'admin') {
+          navigation.replace('AdminPanel');
         } else {
           // Fallback to sign up if userType is not set
           navigation.replace('SignUp');

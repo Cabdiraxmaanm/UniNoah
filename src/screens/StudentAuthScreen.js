@@ -109,7 +109,7 @@ export default function StudentAuthScreen({ navigation }) {
 
   return (
     <LinearGradient
-      colors={Colors.gradients.primary}
+      colors={['#003B73', '#0074D9', '#00BFFF']}
       style={styles.gradient}
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>

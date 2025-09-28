@@ -1,18 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, RefreshControl, Alert, StatusBar } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { bookingsAPI } from '../services/api';
 import { useApp } from '../utils/AppContext';
 import LoadingSpinner from '../components/LoadingSpinner';
-import Header from '../components/Header';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, ComponentStyles } from '../styles/DesignSystem';
 import Badge from '../components/Badge';
+import { Ionicons } from '@expo/vector-icons';
 
-export default function DriverBookingsScreen({ navigation }) {
+export default function DriverBookingsScreen({ navigation, route }) {
   const [bookings, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [filter, setFilter] = useState('All');
+  const [filter, setFilter] = useState(route?.params?.initialFilter || 'All');
   const { user, logout } = useApp();
 
   const loadBookings = async () => {
@@ -54,237 +54,76 @@ export default function DriverBookingsScreen({ navigation }) {
     });
   };
 
-  const getBadgeVariantForStatus = (status) => {
-    switch (status) {
-      case 'completed':
-        return 'success';
-      case 'active':
-        return 'primary';
-      case 'pending':
-        return 'warning';
-      case 'cancelled':
-        return 'error';
-      default:
-        return 'gray';
-    }
-  };
+  const getBadgeVariantForStatus = (status) =>
+    status === 'upcoming' ? 'info' : status === 'completed' ? 'success' : status === 'cancelled' ? 'danger' : 'neutral';
 
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'completed':
-        return 'Completed';
-      case 'active':
-        return 'Active';
-      case 'pending':
-        return 'Pending';
-      case 'cancelled':
-        return 'Cancelled';
-      default:
-        return status;
-    }
-  };
+  const filters = ['All', 'upcoming', 'completed', 'cancelled'];
 
-  const handleStartRide = async (bookingId) => {
-    try {
-      await bookingsAPI.updateBooking(bookingId, { status: 'active' });
-      Alert.alert('Success', 'Ride started! Students can now track your location.');
-      onRefresh();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to start ride. Please try again.');
-    }
-  };
-
-  const handleCompleteRide = async (bookingId) => {
-    try {
-      await bookingsAPI.updateBooking(bookingId, { status: 'completed' });
-      Alert.alert('Success', 'Ride completed! Students can now rate your service.');
-      onRefresh();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to complete ride. Please try again.');
-    }
-  };
-
-  const handleCancelRide = async (bookingId) => {
-    Alert.alert(
-      'Cancel Ride',
-      'Are you sure you want to cancel this ride?',
-      [
-        { text: 'No', style: 'cancel' },
-        { 
-          text: 'Yes', 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await bookingsAPI.updateBooking(bookingId, { status: 'cancelled' });
-              Alert.alert('Success', 'Ride cancelled.');
-              onRefresh();
-            } catch (error) {
-              Alert.alert('Error', 'Failed to cancel ride. Please try again.');
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const handleLogout = async () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Logout', 
-          onPress: async () => {
-            await logout();
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'SignUp' }],
-            });
-          }
-        }
-      ]
-    );
-  };
+  const renderFilterChips = () => (
+    <View style={styles.filtersRow}>
+      {filters.map((label) => {
+        const isActive = filter === label;
+        return (
+          <TouchableOpacity
+            key={label}
+            onPress={() => setFilter(label)}
+            style={[styles.filterChip, isActive && styles.filterChipActive]}
+          >
+            <Text style={[styles.filterChipText, isActive && styles.filterChipTextActive]}>
+              {label === 'All' ? 'All' : label.charAt(0).toUpperCase() + label.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
 
   const renderBooking = ({ item }) => (
-    <View style={styles.bookingCard}>
-      <LinearGradient
-        colors={['rgba(255,255,255,0.95)', 'rgba(255,255,255,0.98)']}
-        style={styles.cardGradient}
-      >
-        {/* Header */}
-        <View style={styles.bookingHeader}>
-          <View style={styles.routeContainer}>
-            <View style={styles.routeLine}>
-              <View style={styles.locationDot} />
+    <View style={styles.card}>
+      <View style={styles.cardHeader}>
+        <View style={styles.routeRow}>
+          <Ionicons name="location" size={16} color={Colors.primary} />
               <Text style={styles.routeText}>{item.route.from}</Text>
-            </View>
-            <View style={styles.routeLine}>
-              <View style={[styles.locationDot, styles.destinationDot]} />
+          <Ionicons name="arrow-forward" size={16} color={Colors.gray500} style={{ marginHorizontal: 6 }} />
+          <Ionicons name="school" size={16} color={Colors.accent} />
               <Text style={styles.routeText}>{item.route.to}</Text>
             </View>
+        <Badge variant={getBadgeVariantForStatus(item.status)} text={item.status} />
+      </View>
+
+      <View style={styles.infoBox}>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Student</Text>
+          <Text style={styles.infoValue}>{item.passengerName}</Text>
           </View>
-          <Badge label={getStatusText(item.status)} variant={getBadgeVariantForStatus(item.status)} />
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Date</Text>
+          <Text style={styles.infoValue}>{formatDate(item.departureTime)}</Text>
         </View>
-        
-        {/* Passenger Info */}
-        <View style={styles.passengerSection}>
-          <View style={styles.passengerAvatar}>
-            <Text style={styles.passengerInitial}>{item.passengerName.charAt(0)}</Text>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Time</Text>
+          <Text style={styles.infoValue}>{formatTime(item.departureTime)}</Text>
           </View>
-          <View style={styles.passengerInfo}>
-            <Text style={styles.passengerName}>{item.passengerName}</Text>
-            <Text style={styles.passengerPhone}>{item.passengerPhone}</Text>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Seats</Text>
+          <Text style={styles.infoValue}>{item.seats || 1}</Text>
           </View>
-          <View style={styles.priceContainer}>
+        <View style={styles.infoRow}>
+          <Text style={styles.infoLabel}>Price</Text>
             <Text style={styles.price}>${item.price}</Text>
           </View>
         </View>
         
-        {/* Trip Details */}
-        <View style={styles.tripDetails}>
-          <View style={styles.detailItem}><Text style={styles.detailText}>Date: {formatDate(item.departureTime)}</Text></View>
-          <View style={styles.detailItem}><Text style={styles.detailText}>Time: {formatTime(item.departureTime)}</Text></View>
-          <View style={styles.detailItem}><Text style={styles.detailText}>Created: {formatDate(item.createdAt)}</Text></View>
-        </View>
-        
-        {/* Actions */}
-        <View style={styles.bookingActions}>
-          {item.status === 'pending' && (
-            <>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => handleStartRide(item.id)}
-              >
-                <LinearGradient
-                  colors={Colors.gradients.secondary}
-                  style={styles.actionButtonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  
-                  <Text style={styles.actionButtonText}>Start Ride</Text>
-                </LinearGradient>
+      <View style={styles.actionsRow}>
+        <TouchableOpacity style={[styles.primaryButton]} onPress={() => navigation.navigate('DriverNavigation', { booking: item })}>
+          <Ionicons name="map" size={18} color="#FFFFFF" />
+          <Text style={styles.primaryButtonText}>Navigate</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => handleCancelRide(item.id)}
-              >
-                <LinearGradient
-                  colors={Colors.gradients.accent}
-                  style={styles.actionButtonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  
-                  <Text style={styles.actionButtonText}>Cancel</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </>
-          )}
-          
-          {item.status === 'active' && (
-            <>
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => handleCompleteRide(item.id)}
-              >
-                <LinearGradient
-                  colors={Colors.gradients.secondary}
-                  style={styles.actionButtonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  
-                  <Text style={styles.actionButtonText}>Complete Ride</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={styles.actionButton}
-                onPress={() => navigation.navigate('DriverNavigation', { booking: item })}
-              >
-                <LinearGradient
-                  colors={Colors.gradients.primary}
-                  style={styles.actionButtonGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                >
-                  
-                  <Text style={styles.actionButtonText}>Navigation</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </>
-          )}
-          
-          {item.status === 'completed' && (
-            <View style={styles.completedInfo}>
-              
-              <Text style={styles.completedText}>Ride completed</Text>
-              <Text style={styles.completedSubtext}>Student can now rate your service</Text>
-            </View>
-          )}
-          
-          {(item.status === 'pending' || item.status === 'active') && (
-            <TouchableOpacity
-              style={styles.contactButton}
-              onPress={() => Alert.alert('Contact', `Call ${item.passengerName}?`)}
-            >
-              <LinearGradient
-                colors={Colors.gradients.accent}
-                style={styles.contactButtonGradient}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Text style={styles.contactButtonIcon}>📞</Text>
-                <Text style={styles.contactButtonText}>Contact Passenger</Text>
-              </LinearGradient>
+        <TouchableOpacity style={[styles.secondaryButton]} onPress={() => Alert.alert('Contact', `Call ${item.passengerName}?`)}>
+          <Ionicons name="call" size={18} color={Colors.primary} />
+          <Text style={styles.secondaryButtonText}>Contact</Text>
             </TouchableOpacity>
-          )}
         </View>
-      </LinearGradient>
     </View>
   );
 
@@ -292,63 +131,52 @@ export default function DriverBookingsScreen({ navigation }) {
     return <LoadingSpinner message="Loading bookings..." />;
   }
 
+  const visibleBookings = filter === 'All' ? bookings : bookings.filter(b => b.status === filter);
+
   return (
     <View style={styles.container}>
-      <Header title="My Bookings" showLogout={true} onLogout={handleLogout} />
-      {/* Status Filter */}
-      <View style={styles.filterBar}>
-        {['All', 'active', 'pending', 'completed', 'cancelled'].map((key) => (
-          <TouchableOpacity key={key} onPress={() => setFilter(key)} style={[styles.filterChip, filter === key && styles.filterChipActive]}>
-            <Text style={[styles.filterText, filter === key && styles.filterTextActive]}>
-              {key === 'All' ? 'All' : key.charAt(0).toUpperCase() + key.slice(1)}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <StatusBar barStyle="light-content" backgroundColor="#003B73" />
+      <LinearGradient
+        colors={['#003B73', '#0074D9', '#00BFFF']}
+        style={styles.headerGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+      >
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Bookings</Text>
+          <Text style={styles.headerSubtitle}>Manage your confirmed and past rides</Text>
+          {renderFilterChips()}
       </View>
-      
-      {/* Navigation Menu */}
-      <View style={styles.navMenu}>
-        <TouchableOpacity style={styles.navButton} onPress={() => navigation.navigate('DriverSetAvailability')}>
-          <Text style={styles.navButtonText}>Set Availability</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.navButton} onPress={() => navigation.navigate('DriverRequests')}>
-          <Text style={styles.navButtonText}>Requests</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.navButton, styles.activeNavButton]} onPress={() => navigation.navigate('DriverBookings')}>
-          <Text style={[styles.navButtonText, styles.activeNavButtonText]}>Bookings</Text>
-        </TouchableOpacity>
-      </View>
-      
-      {(filter === 'All' ? bookings : bookings.filter(b => b.status === filter)).length === 0 ? (
+      </LinearGradient>
+
+      {visibleBookings.length === 0 ? (
         <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>🚗</View>
+          <Ionicons name="list-outline" size={56} color={Colors.primary} style={{ marginBottom: 12 }} />
           <Text style={styles.emptyTitle}>No bookings yet</Text>
           <Text style={styles.emptySubtitle}>
             Your confirmed bookings will appear here once students book your rides
           </Text>
           <TouchableOpacity 
-            style={styles.createRideButton} 
+            style={styles.ctaButton} 
             onPress={() => navigation.navigate('DriverSetAvailability')}
           >
             <LinearGradient
               colors={Colors.gradients.primary}
-              style={styles.createRideButtonGradient}
+              style={styles.ctaButtonGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
             >
-              <Text style={styles.createRideButtonText}>Create a Ride</Text>
+              <Text style={styles.ctaButtonText}>Create a Ride</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
       ) : (
         <FlatList
-          data={filter === 'All' ? bookings : bookings.filter(b => b.status === filter)}
+          data={visibleBookings}
           keyExtractor={item => item.id}
           renderItem={renderBooking}
           contentContainerStyle={styles.listContainer}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
           showsVerticalScrollIndicator={false}
         />
       )}
@@ -359,293 +187,177 @@ export default function DriverBookingsScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: Colors.background,
+    backgroundColor: '#F8FAFC',
   },
-  navMenu: {
+  headerGradient: {
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
+  },
+  headerContent: {
+    width: '100%',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  headerSubtitle: {
+    marginTop: 4,
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.85)',
+  },
+  filtersRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.surface,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray200,
-    ...Shadows.sm,
-  },
-  navButton: {
-    flex: 1,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.sm,
-    marginHorizontal: 2,
-    borderRadius: BorderRadius.md,
-    alignItems: 'center',
-  },
-  activeNavButton: {
-    backgroundColor: Colors.primary,
-    ...Shadows.sm,
-  },
-  navButtonText: {
-    fontSize: Typography.xs,
-    fontWeight: Typography.semibold,
-    color: Colors.textSecondary,
-  },
-  activeNavButtonText: {
-    color: Colors.textInverse,
-  },
-  filterBar: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.sm,
-    backgroundColor: Colors.surface,
+    marginTop: 14,
+    gap: 8,
+    flexWrap: 'wrap',
   },
   filterChip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: Colors.gray200,
-    backgroundColor: Colors.surface,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.18)',
   },
   filterChipActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: '#FFFFFF',
   },
-  filterText: {
-    fontSize: Typography.xs,
-    color: Colors.textSecondary,
-    fontWeight: Typography.medium,
+  filterChipText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '600',
   },
-  filterTextActive: {
-    color: Colors.textInverse,
-    fontWeight: Typography.semibold,
+  filterChipTextActive: {
+    color: '#003B73',
   },
   listContainer: {
-    padding: Spacing.lg,
-    paddingBottom: Spacing['2xl'],
+    padding: 16,
+    paddingBottom: 120,
   },
-  bookingCard: {
-    marginBottom: Spacing.lg,
-    borderRadius: BorderRadius['2xl'],
-    overflow: 'hidden',
-    ...Shadows.lg,
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 14,
+    shadowColor: '#003B73',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 2,
   },
-  cardGradient: {
-    padding: Spacing.lg,
-  },
-  bookingHeader: {
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: Spacing.lg,
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  routeContainer: {
-    flex: 1,
-    marginRight: Spacing.lg,
-  },
-  routeLine: {
+  routeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
-  },
-  locationDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.primary,
-    marginRight: Spacing.md,
-  },
-  destinationDot: {
-    backgroundColor: Colors.secondary,
+    flex: 1,
   },
   routeText: {
-    fontSize: Typography.lg,
-    fontWeight: Typography.semibold,
-    color: Colors.textPrimary,
-    flex: 1,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#003B73',
+    marginLeft: 6,
   },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.full,
-    ...Shadows.sm,
+  infoBox: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
   },
-  statusIcon: {
-    fontSize: 12,
-    marginRight: Spacing.xs,
-  },
-  statusText: {
-    color: Colors.textInverse,
-    fontSize: Typography.xs,
-    fontWeight: Typography.bold,
-  },
-  passengerSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    backgroundColor: Colors.surfaceSecondary,
-    borderRadius: BorderRadius.lg,
-  },
-  passengerAvatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.secondary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: Spacing.md,
-    ...Shadows.sm,
-  },
-  passengerInitial: {
-    color: Colors.textInverse,
-    fontSize: Typography.lg,
-    fontWeight: Typography.bold,
-  },
-  passengerInfo: {
-    flex: 1,
-  },
-  passengerName: {
-    fontSize: Typography.lg,
-    fontWeight: Typography.semibold,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
-  },
-  passengerPhone: {
-    fontSize: Typography.sm,
-    color: Colors.textSecondary,
-  },
-  priceContainer: {
-    alignItems: 'flex-end',
-  },
-  price: {
-    fontSize: Typography.xl,
-    fontWeight: Typography.bold,
-    color: Colors.success,
-  },
-  tripDetails: {
+  infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: Spacing.lg,
-    paddingHorizontal: Spacing.sm,
+    marginBottom: 8,
   },
-  detailItem: { alignItems: 'flex-start', flex: 1 },
-  detailText: { fontSize: Typography.xs, color: Colors.textSecondary, textAlign: 'left' },
-  bookingActions: {
-    alignItems: 'center',
+  infoLabel: {
+    fontSize: 13,
+    color: '#475569',
+    fontWeight: '600',
   },
-  actionButton: {
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
-    ...Shadows.md,
-    marginBottom: Spacing.sm,
-    width: '100%',
+  infoValue: {
+    fontSize: 13,
+    color: '#0F172A',
+    fontWeight: '700',
   },
-  actionButtonGradient: {
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
+  price: {
+    fontSize: 16,
+    color: '#10B981',
+    fontWeight: '800',
+  },
+  actionsRow: {
     flexDirection: 'row',
+    gap: 10,
+  },
+  primaryButton: {
+    flex: 1,
+    backgroundColor: '#0074D9',
+    paddingVertical: 12,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  actionButtonIcon: {
-    fontSize: 16,
-    marginRight: Spacing.xs,
-  },
-  actionButtonText: {
-    color: Colors.textInverse,
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
-  },
-  cancelButton: {
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
-    ...Shadows.md,
-    marginBottom: Spacing.sm,
-    width: '100%',
-  },
-  contactButton: {
-    borderRadius: BorderRadius.lg,
-    overflow: 'hidden',
-    ...Shadows.md,
-    width: '100%',
-  },
-  contactButtonGradient: {
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
     flexDirection: 'row',
+    gap: 6,
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  secondaryButton: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingVertical: 12,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
   },
-  contactButtonIcon: {
-    fontSize: 16,
-    marginRight: Spacing.xs,
-  },
-  contactButtonText: {
-    color: Colors.textInverse,
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
-  },
-  completedInfo: {
-    alignItems: 'center',
-    paddingTop: Spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: Colors.gray200,
-  },
-  completedIcon: {
-    fontSize: 24,
-    marginBottom: Spacing.xs,
-  },
-  completedText: {
-    fontSize: Typography.lg,
-    color: Colors.success,
-    fontWeight: Typography.bold,
-    marginBottom: Spacing.xs,
-  },
-  completedSubtext: {
-    fontSize: Typography.sm,
-    color: Colors.textSecondary,
-    textAlign: 'center',
+  secondaryButtonText: {
+    color: '#003B73',
+    fontSize: 15,
+    fontWeight: '700',
   },
   emptyState: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: Spacing['2xl'],
-  },
-  emptyIcon: {
-    fontSize: 64,
-    marginBottom: Spacing.lg,
+    padding: 24,
   },
   emptyTitle: {
-    fontSize: Typography.xl,
-    fontWeight: Typography.bold,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.sm,
-    textAlign: 'center',
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#003B73',
+    marginBottom: 8,
   },
   emptySubtitle: {
-    fontSize: Typography.lg,
-    color: Colors.textSecondary,
+    fontSize: 14,
+    color: '#475569',
     textAlign: 'center',
-    marginBottom: Spacing['2xl'],
-    lineHeight: Typography.lineHeight.normal,
+    marginBottom: 18,
+    lineHeight: 22,
   },
-  createRideButton: {
-    borderRadius: BorderRadius.lg,
+  ctaButton: {
+    borderRadius: 12,
     overflow: 'hidden',
-    ...Shadows.md,
   },
-  createRideButtonGradient: {
-    paddingVertical: Spacing.md,
-    paddingHorizontal: Spacing.lg,
+  ctaButtonGradient: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  createRideButtonText: {
-    color: Colors.textInverse,
-    fontWeight: Typography.bold,
-    fontSize: Typography.lg,
+  ctaButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 14,
   },
 }); 

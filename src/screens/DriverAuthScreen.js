@@ -109,7 +109,7 @@ export default function DriverAuthScreen({ navigation }) {
 
   return (
     <LinearGradient
-      colors={Colors.gradients.secondary}
+      colors={['#065F46', '#059669', '#34D399']}
       style={styles.gradient}
     >
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -156,7 +156,7 @@ export default function DriverAuthScreen({ navigation }) {
           
           <TouchableOpacity style={styles.button} onPress={handleAuth}>
             <LinearGradient
-              colors={Colors.gradients.primary}
+              colors={['#003B73', '#0074D9', '#00BFFF']}
               style={styles.buttonGradient}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
     ...Shadows.sm,
   },
   inputFocused: {
-    borderColor: Colors.primary,
+    borderColor: '#10B981',
     backgroundColor: Colors.white,
     ...Shadows.md,
   },
@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   buttonText: { 
-    color: Colors.textInverse, 
+    color: '#FFFFFF', 
     fontSize: Typography.lg, 
     fontWeight: Typography.bold,
     textShadowColor: 'rgba(0,0,0,0.1)',
